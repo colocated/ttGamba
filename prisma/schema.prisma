@@ -44,8 +44,169 @@ model User {
   /// Chips held, in whole chips. Never real money, and never in-game cash
   /// either — this balance only moves when a banker settles a deposit or a
   /// game pays out. See PRODUCT.md.
-  chips Int @default(0)
+  ///
+  /// Chips promised to an open withdrawal are *not* in here: they are taken
+  /// out the moment the withdrawal is asked for, so a player cannot ask for
+  /// them and then gamble them away before a banker gets to it. See
+  /// lib/requests.ts.
+  ///
+  /// `BigInt`, not `Int`, and this is the reason: Prisma's `Int` is a 32-bit
+  /// signed integer, which stops at 2,147,483,647 — and this server's high
+  /// rollers bet in billions. SQLite's own `INTEGER` was always 64 bits, so
+  /// the ceiling was never the database's; the column SQL is unchanged. What
+  /// changes is the type Prisma hands back, and lib/rows.ts is where that
+  /// becomes a `number` again. See `AMOUNT_LIMIT` in lib/desk.ts for why that
+  /// last step is safe.
+  chips BigInt @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  requests Request[]
+}
+
+/// Which way across the boundary the chips are meant to go.
+///
+/// The app cannot reach in-game money, so every crossing is a person handing
+/// another person cash in the world and one of them being a banker. That is
+/// the whole reason this table exists.
+enum RequestKind {
+  /// In-game cash to the banker, chips to the player.
+  deposit
+  /// Chips back to the house, in-game cash to the player.
+  withdrawal
+}
+
+/// Where a request has got to.
+///
+/// Two ways out of `pending`, and only one of them continues: a banker either
+/// takes it on (`approved`, meaning "I will do this") and then settles it
+/// (`closed`, meaning "the money has changed hands"), or turns it down
+/// (`denied`). `cancelled` is the player's own way out, open to them for as
+/// long as nothing has been settled.
+enum RequestStatus {
+  pending
+  approved
+  closed
+  denied
+  cancelled
+}
+
+/// A player asking a banker to move chips across the in-game boundary.
+///
+/// A player may have as many of these open as they like, of either kind, so
+/// nothing here is unique per player — the list is the record.
+model Request {
+  id Int @id @default(autoincrement())
+
+  kind   RequestKind
+  status RequestStatus @default(pending)
+
+  /// Always positive; `kind` carries the direction. Whole chips, like every
+  /// other figure in this schema — and `BigInt` for the same reason the
+  /// balance is.
+  amount BigInt
+
+  player User @relation(fields: [vrpId], references: [vrpId])
+  vrpId  Int
+
+  /*
+    Who the player was when they asked.
+
+    The User row deliberately mirrors none of this (see its comment), and
+    ordinarily that is right — a name read live from the client is never
+    stale. A request is the exception: it is a record of something that
+    happened, and a banker reviewing one needs the character that made it, not
+    whoever holds the account by the time they get round to it. Renaming
+    afterwards must not rewrite the desk's paperwork.
+
+    Nullable throughout because the client is allowed not to know: a player in
+    no faction, an account with no Discord linked, or simply a key that had not
+    arrived yet when the request was made.
+
+    The client also reports a source id — which server slot the player is
+    sitting in — and it is deliberately not here. It is true for one session
+    and meaningless afterwards, so on a record that outlives the session it
+    would read as identity while being nothing of the kind.
+  */
+  playerName  String?
+  discordId   String?
+  steamId     String?
+  factionName String?
+  factionTag  String?
+
+  /// The note attached to the most recent move — usually why it was denied.
+  /// Every note ever attached is on the audit trail; this is the current one,
+  /// so the list can show it without a join.
+  note String?
+
+  /// The banker who last moved it. Their name is captured for the same reason
+  /// the player's is.
+  handledByVrpId Int?
+  handledByName  String?
+  handledAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events AuditEvent[]
+
+  /// The desk's two working queues: one kind, oldest first.
+  @@index([kind, status, createdAt])
+  /// Everything one player has ever asked for — the lookup tab.
+  @@index([vrpId, createdAt])
+  /// Settled requests inside a window, for the 24-hour figures.
+  @@index([status, handledAt])
+}
+
+/// Something that happened, written down.
+///
+/// The point of an audit trail is that it does not change when the world does,
+/// so nothing here is a foreign key to a player: names are copied in at the
+/// time, and ids are plain integers. A row must still make sense when the
+/// account it names has been renamed, demoted, or is simply gone.
+model AuditEvent {
+  id Int      @id @default(autoincrement())
+  at DateTime @default(now())
+
+  /// A key from the registry in lib/desk.ts — `deposit.closed`, `game.bet`
+  /// and so on. Deliberately a string rather than an enum: games are still
+  /// being built and each one brings events with it, and a schema migration is
+  /// too high a price for adding a line to a log.
+  action String
+
+  /// Who did it. Absent when the app did it to itself.
+  actorVrpId Int?
+  actorName  String?
+  /// What the actor was allowed to do at the time — the part of the record
+  /// that a later demotion would otherwise erase.
+  actorRole  Role?
+
+  /// Who it was done to. The same person as the actor for anything a player
+  /// does to their own account.
+  subjectVrpId Int?
+  subjectName  String?
+
+  /// Chips the event moved, always positive. Which way is the action's to say.
+  amount BigInt?
+  /// The subject's balance once it had moved, so the trail can be read back as
+  /// a ledger rather than a list of deltas that have to be re-added.
+  balanceAfter BigInt?
+
+  note String?
+  /// Anything action-specific, as JSON. Read defensively — old rows were
+  /// written by old code.
+  detail String?
+
+  request   Request? @relation(fields: [requestId], references: [id])
+  requestId Int?
+
+  /// The log's own order, which is how it is read by default.
+  @@index([at])
+  /// The audit tab's filters.
+  @@index([action, at])
+  @@index([actorVrpId, at])
+  @@index([subjectVrpId, at])
+  /// One request's history, for its modal.
+  @@index([requestId])
 }

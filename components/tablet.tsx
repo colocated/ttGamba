@@ -18,6 +18,7 @@ import { DEFAULT_SETTINGS, useSettings } from "@/lib/settings";
 import { getData } from "@/lib/userapp";
 import { InstallGuide } from "./install-guide";
 import { Odometer } from "./odometer";
+import { OverlayHost } from "./overlay";
 import { Shelf } from "./shelf";
 import { UpdateBanner } from "./update-banner";
 
@@ -335,6 +336,14 @@ export function Tablet({ children }: { children: React.ReactNode }) {
             connection === "absent" && <InstallGuide />
           )}
         </div>
+
+        {/*
+          Where modals land. Inside the frame so they cover the window rather
+          than the game behind it, and outside the stage's scroll container so
+          they stay put when the page under them is scrolled. See
+          components/overlay.tsx.
+        */}
+        <OverlayHost />
 
         {/*
           Corner grips. They sit above everything so a grip is never swallowed

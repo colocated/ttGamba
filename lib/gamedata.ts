@@ -35,8 +35,10 @@ export type Player = {
   factionTag: string | null;
   /** Discord snowflake, with the client's `discord:` prefix removed. */
   discordId: string | null;
-  /** Cfx.re account id, from the `fivem:` player identifier. */
-  cfxId: string | null;
+  /** Steam Hex Identifier with the steam: prefix removed */
+  steamId: string | null;
+  /** Source ID to show the players current session */
+  sourceId: string | null;
   /** In-game cash on hand, in dollars. Not chips — see PRODUCT.md. */
   wallet: number | null;
   /** In-game bank balance, in dollars. */
@@ -49,7 +51,8 @@ const NO_PLAYER: Player = {
   factionName: null,
   factionTag: null,
   discordId: null,
-  cfxId: null,
+  steamId: null,
+  sourceId: null,
   wallet: null,
   bank: null,
 };
@@ -107,14 +110,42 @@ function number(key: string): number | null {
 
 /**
  * Player identifiers arrive in their raw FiveM form — `discord:1234567890`,
- * `fivem:987654` — under a key named for the type. Only the id is of interest;
- * the prefix is the key repeated.
+ * `steam:110000112345678` — under a key named for the type. Only the id is of
+ * interest; the prefix is the key repeated.
+ *
+ * Two things the client is not consistent about, both handled here rather than
+ * at each call site:
+ *
+ * - **Not everything is prefixed.** `source` is which slot on the server the
+ *   player is sitting in, and it arrives bare — `280`, not `source:280`. A
+ *   value with no colon in it is already the id.
+ * - **Not everything is a string.** That same `source` arrives as a *number*,
+ *   because that is how the client cached it. Reading it with `text` would
+ *   drop it on the floor, and the field would sit empty forever with nothing
+ *   to suggest why.
+ *
+ * The id is taken from after the *last* colon rather than the first, so a
+ * prefix that ever gains a segment cannot start leaking into the value.
+ * `lastIndexOf` returning -1 for an unprefixed value is what makes that one
+ * expression cover both cases: `slice(0)` is the whole string.
  */
 function identifier(key: string): string | null {
-  const raw = text(key);
-  if (!raw) return null;
-  const separator = raw.indexOf(":");
-  const id = separator === -1 ? raw : raw.slice(separator + 1);
+  const value = cache[key];
+
+  const raw =
+    typeof value === "string"
+      ? value
+      : // Not `String(value)` on anything: a boolean identifier is the client
+        // sending something this function has no business guessing about.
+        typeof value === "number" && Number.isFinite(value)
+        ? String(value)
+        : null;
+
+  // As with `text`: an empty string is how the client says "none" — an account
+  // with no Discord linked — rather than an id worth carrying around.
+  if (raw === null || raw === "") return null;
+
+  const id = raw.slice(raw.lastIndexOf(":") + 1);
   return id === "" ? null : id;
 }
 
@@ -125,7 +156,9 @@ function read(): Player {
     factionName: text("faction_name"),
     factionTag: text("faction_tag"),
     discordId: identifier("discord"),
-    cfxId: identifier("fivem"),
+    steamId: identifier("steam"),
+    // Bare and numeric, unlike the two above it. `identifier` covers both.
+    sourceId: identifier("source"),
     wallet: number("wallet"),
     bank: number("bank"),
   };

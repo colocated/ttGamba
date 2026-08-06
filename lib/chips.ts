@@ -164,6 +164,32 @@ export function refreshChips() {
   load(vrpId);
 }
 
+/**
+ * Re-read the account if what we hold is older than `maxAge` milliseconds.
+ *
+ * This is a deliberate departure from "the server is asked once per app load".
+ * The balance was the only thing here when that was written, and a stale
+ * balance costs a moment of wrong text. The role is not like that: it is a
+ * permission, and a player who has just had `banker` taken off them is sitting
+ * in front of a page that still believes otherwise. Reloading the app is not
+ * something the app can ask for (components/tablet.tsx), so the only thing
+ * left is to re-ask as they move around — which lib/staff.ts does on every
+ * navigation, at most this often.
+ *
+ * The panel is not defended by this. It is defended by lib/auth.ts, which
+ * re-reads the role on every single call and cannot be talked out of it. This
+ * is the part that stops a demoted banker being *shown* a desk they can no
+ * longer use.
+ *
+ * A failed re-read leaves `at` where it was, so the next navigation tries
+ * again rather than accepting a stale role for the full interval.
+ */
+export function revalidateAccount(maxAge: number) {
+  if (asked === null) return;
+  if (Date.now() - at < maxAge) return;
+  refreshChips();
+}
+
 function hydrate() {
   if (hydrated || typeof window === "undefined") return;
   hydrated = true;

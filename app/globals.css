@@ -56,6 +56,13 @@
   --color-felt-hi: #38b87c;
   --color-chip: #d8a83e;
   --color-loss: #d1565b;
+  /*
+    Finished, and no longer anybody's problem. The banker desk needs a fourth
+    state that is neither in progress (felt), nor money (chip), nor a refusal
+    (loss) — a request whose chips have moved is closed, not good or bad. Blue
+    is the one hue left that says "done" without saying "well done".
+  */
+  --color-settled: #4f8ccc;
 
   /* 8px ceiling — see DESIGN.md. */
   --radius-panel: 8px;
@@ -116,6 +123,43 @@
       color: var(--color-chip);
     }
   }
+
+  /*
+    A modal arriving, and leaving. The job is to show where it came from — it
+    is the row that was just pressed, opened out — so the panel rises a little
+    as it lands rather than appearing at full size from nowhere, and retreats
+    the same way it came. Flat easing, no overshoot, and well inside the
+    ~500ms ceiling (DESIGN.md).
+
+    The way out is the way in, reversed, which is what keeps the two reading as
+    one gesture rather than two effects. `both` on the exit matters: the panel
+    has to hold its finished state for the frame between the animation ending
+    and React unmounting it, or it flashes back to full opacity on the way out.
+  */
+  --animate-scrim: scrim-in 120ms ease-out;
+  --animate-sheet: sheet-in var(--tt-sheet-time) ease-out;
+  --animate-scrim-out: scrim-in 120ms ease-out reverse both;
+  --animate-sheet-out: sheet-in var(--tt-sheet-time) ease-out reverse both;
+
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes sheet-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 
 @layer base {
@@ -125,6 +169,8 @@
   */
   :root {
     --tt-roll-time: 420ms;
+    /* How long a modal takes to land. See `sheet-in`. */
+    --tt-sheet-time: 160ms;
   }
 
   /*
@@ -136,6 +182,7 @@
   @media (prefers-reduced-motion: reduce) {
     :root {
       --tt-roll-time: 1ms;
+      --tt-sheet-time: 1ms;
     }
   }
 
@@ -152,5 +199,60 @@
   :focus-visible {
     outline: 2px solid var(--color-felt-hi);
     outline-offset: 2px;
+  }
+
+  /*
+    Scrollbars, macOS-style: no track, no arrows, just a thin rounded thumb.
+    The platform default is a light-grey column with stepper buttons that
+    lands on the window like a piece of somebody else's UI — it reads as
+    part of the desktop rather than part of the tablet.
+
+    The gutter stays 10px so the thumb has room to sit clear of the edge,
+    but the thumb itself is painted inside a transparent 3px border
+    (`background-clip: padding-box`), which leaves ~4px of visible bar. The
+    track is transparent, so the surface underneath — stage, drawer or
+    raised panel — is what shows through, and the scrollbar picks up the
+    tone of whatever it is scrolling.
+  */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Steppers. Zero-sized rather than `display: none`, which Chromium ignores. */
+  ::-webkit-scrollbar-button {
+    width: 0;
+    height: 0;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-edge);
+    background-clip: padding-box;
+    border: 3px solid transparent;
+    /* Half of the 10px gutter — a capsule, and inside the 8px ceiling. */
+    border-radius: 5px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-edge-strong);
+  }
+
+  /*
+    Firefox has no pseudo-elements for this, and its standard properties are
+    all the control there is. Guarded, because Chromium honours
+    `scrollbar-width`/`scrollbar-color` in preference to everything above —
+    setting them unguarded would trade the thumb we just drew for the
+    engine's own 11px one.
+  */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-edge) transparent;
+    }
   }
 }

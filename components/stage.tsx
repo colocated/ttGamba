@@ -1,3 +1,5 @@
+import type { Tone } from "@/lib/desk";
+
 /**
  * Shared chrome for anything rendered in the window's right-hand pane, so every
  * game and settings page gets the same header rhythm.
@@ -45,10 +47,35 @@ export function Panel({
   );
 }
 
+/**
+ * A tone, as colours. Border, tint and text — the fill stays at a tenth so a
+ * coloured label reads as a label rather than as the loudest thing on a page
+ * whose job is to be scanned.
+ *
+ * Shared with the banker desk's status pills, so a green means the same thing
+ * wherever it turns up.
+ */
+export const TONES: Record<Tone, string> = {
+  neutral: "border-edge bg-tone-3 text-ink-soft",
+  good: "border-felt/50 bg-felt/10 text-felt-hi",
+  settled: "border-settled/50 bg-settled/10 text-settled",
+  bad: "border-loss/50 bg-loss/10 text-loss",
+  muted: "border-edge/60 bg-tone-2 text-ink-muted",
+};
+
 /** Small inline label. Squared off — no pills anywhere (DESIGN.md). */
-export function Tag({ children }: { children: React.ReactNode }) {
+export function Tag({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  /** Left alone, a tag is the plain grey one. Colour is for labels worth picking out. */
+  tone?: Tone;
+}) {
   return (
-    <span className="rounded-chip border border-edge bg-tone-3 px-2 py-1 text-xs uppercase tracking-wide text-ink-soft">
+    <span
+      className={`rounded-chip border px-2 py-1 text-xs uppercase tracking-wide ${TONES[tone]}`}
+    >
       {children}
     </span>
   );

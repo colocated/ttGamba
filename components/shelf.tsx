@@ -10,8 +10,10 @@ import { GearSixIcon } from "@phosphor-icons/react/dist/csr/GearSix";
 import { PokerChipIcon } from "@phosphor-icons/react/dist/csr/PokerChip";
 import { RoadHorizonIcon } from "@phosphor-icons/react/dist/csr/RoadHorizon";
 import { SpadeIcon } from "@phosphor-icons/react/dist/csr/Spade";
+import { VaultIcon } from "@phosphor-icons/react/dist/csr/Vault";
 
 import { GAMES, type Game } from "@/lib/games";
+import { useStaff } from "@/lib/staff";
 
 const ICONS: Record<Game["icon"], Icon> = {
   spade: SpadeIcon,
@@ -36,6 +38,14 @@ const ROW_WIDTH = DRAWER - 16;
 export function Shelf({ pinned }: { pinned: boolean }) {
   const [hovered, setHovered] = useState(false);
   const open = pinned || hovered;
+
+  /*
+    The shelf is on screen on every page, which makes it the right place to
+    watch the role from: the hook re-reads it on each navigation, so clicking
+    around anywhere in the app is what makes a revoked banker role take effect
+    — including the entry below disappearing. See lib/staff.ts.
+  */
+  const { staff } = useStaff();
 
   return (
     // The spacer: this is what the stage is measured against. Only pinning
@@ -71,6 +81,17 @@ export function Shelf({ pinned }: { pinned: boolean }) {
         </ul>
 
         <ul className="flex flex-col gap-0.5 border-t border-edge pt-2" style={{ width: ROW_WIDTH }}>
+          {/*
+            Above settings, and only for staff. Hiding it is presentation, not
+            protection — everything behind it re-checks the role server-side on
+            every call (lib/auth.ts), so a player who guesses the address gets
+            a closed door rather than a desk.
+          */}
+          {staff ? (
+            <li>
+              <ShelfLink href="/banker" icon={VaultIcon} label="Banker Menu" open={open} />
+            </li>
+          ) : null}
           <li>
             <ShelfLink href="/settings" icon={GearSixIcon} label="Settings" open={open} />
           </li>
@@ -92,7 +113,10 @@ function ShelfLink({
   open: boolean;
 }) {
   const pathname = usePathname();
-  const active = pathname === href;
+  // Sub-routes count as the section being open — the banker desk's tabs are
+  // pages of their own, and the shelf should not go dark the moment one is
+  // opened.
+  const active = pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <Link
