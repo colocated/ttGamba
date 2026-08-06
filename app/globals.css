@@ -1,0 +1,156 @@
+@import "tailwindcss";
+
+/*
+  ttGamba design tokens.
+
+  Two rules from DESIGN.md drive everything below:
+
+  1. Depth is surface tone only. No shadows, no gradients, no blur. A thing
+     that should read as "closer" gets a lighter tone, not a shadow.
+  2. Max border-radius is 8px. Motion is earned — colour transitions run at
+     120ms ease-out, and anything more has to be doing a job.
+
+  The window chrome is translucent so the game reads through it. Raised
+  surfaces on the stage are opaque — being solid against a see-through
+  backdrop is what makes them read as lifted without a shadow.
+*/
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  /* Tone ladder, darkest to lightest. Prefer the semantic names below. */
+  --color-tone-0: #12171d;
+  --color-tone-1: #171d24;
+  --color-tone-2: #1f262e;
+  --color-tone-3: #262e38;
+  --color-tone-4: #2b333d;
+  --color-tone-5: #354050;
+  --color-tone-6: #3f4b5c;
+
+  /*
+    The window is one continuous translucent surface — titlebar, shelf and
+    stage all sit on `stage`, and anything that should read as "on top" is a
+    tone step above it rather than a differently-coloured region.
+  */
+  --color-stage: rgb(23 29 36 / 0.9);
+  /* Opaque, so the shelf drawer floating over the stage doesn't double-darken. */
+  --color-drawer: #1a2129;
+
+  /* Opaque raised surfaces, for content sitting on the stage. */
+  --color-raised: #212932;
+  --color-raised-hi: #2a333e;
+  --color-raised-hover: #313b47;
+
+  /* Hairlines. */
+  --color-edge: #38424f;
+  --color-edge-strong: #4a5665;
+
+  /* Text. */
+  --color-ink: #eef1f5;
+  --color-ink-soft: #a8b2c0;
+  --color-ink-muted: #6e7a89;
+
+  /* Accents. Felt green is the action colour, chip gold is currency. */
+  --color-felt: #2f9e6b;
+  --color-felt-hi: #38b87c;
+  --color-chip: #d8a83e;
+  --color-loss: #d1565b;
+
+  /* 8px ceiling — see DESIGN.md. */
+  --radius-panel: 8px;
+  --radius-control: 6px;
+  --radius-chip: 4px;
+
+  /*
+    Refresh re-pulls data without reloading the page, so nothing on screen
+    necessarily changes when it fires — the spin is what tells the player it
+    did anything.
+  */
+  --animate-refresh: refresh-spin 500ms ease-out;
+
+  @keyframes refresh-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /*
+    A balance changing. Each digit column rolls through the numbers between the
+    old figure and the new one, travelling up for a gain and down for a loss —
+    the direction is readable before the number has settled. `both` matters:
+    the strip has to be parked on the *starting* digit before the first frame,
+    and held on the finishing one after the last. See components/odometer.tsx.
+  */
+  --animate-roll: roll var(--tt-roll-time) ease-out both;
+  /* The tint that runs alongside, easing back to the currency colour. */
+  --animate-gain: settle-gain var(--tt-roll-time) ease-out;
+  --animate-loss: settle-loss var(--tt-roll-time) ease-out;
+
+  @keyframes roll {
+    from {
+      transform: translateY(var(--tt-roll-from, 0));
+    }
+    to {
+      transform: translateY(var(--tt-roll-to, 0));
+    }
+  }
+
+  @keyframes settle-gain {
+    from {
+      color: var(--color-felt-hi);
+    }
+    to {
+      color: var(--color-chip);
+    }
+  }
+
+  @keyframes settle-loss {
+    from {
+      color: var(--color-loss);
+    }
+    to {
+      color: var(--color-chip);
+    }
+  }
+}
+
+@layer base {
+  /*
+    How long a balance takes to roll. Within the ~500ms ceiling DESIGN.md puts
+    on anything larger than a colour change.
+  */
+  :root {
+    --tt-roll-time: 420ms;
+  }
+
+  /*
+    Shortened rather than switched off. The roll's end state is carried by the
+    animation's fill, so removing it would leave the strip parked on the digit
+    it started from — the old figure, frozen. A duration this short lands on the
+    new one immediately, which is what was asked for.
+  */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --tt-roll-time: 1ms;
+    }
+  }
+
+  /*
+    The user app is handed the whole game viewport, so everything outside the
+    window has to stay see-through or we black out the player's screen.
+  */
+  html,
+  body {
+    background: transparent;
+  }
+
+  /* Focus rings are the only permitted "depth" effect. */
+  :focus-visible {
+    outline: 2px solid var(--color-felt-hi);
+    outline-offset: 2px;
+  }
+}

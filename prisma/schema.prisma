@@ -1,0 +1,51 @@
+// ttGamba's database.
+//
+// The provider is `sqlite` because Turso *is* SQLite — libSQL is a fork of it,
+// and the schema engine talks the same dialect. What Turso is not is reachable
+// by that engine: it only speaks `file:`, so `libsql://` URLs are rejected
+// outright. Migrations are therefore authored here against the local dev file
+// and shipped to Turso as SQL. See lib/db.ts and README.md.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// Gates what the app will show. Every player is a `player` until someone
+/// makes them otherwise — there is no self-service route to the other two.
+enum Role {
+  superadmin
+  /// Runs the deposit desk: takes in-game cash and credits chips for it.
+  banker
+  player
+}
+
+/// A player's standing with the casino.
+///
+/// This is the binding between a Transport Tycoon character and the chips it
+/// holds. It stores only what the game client cannot tell us — a role and a
+/// balance. Everything the client *can* answer (name, faction, Discord, wallet,
+/// bank) is deliberately not mirrored here: a copy would only ever be a stale
+/// version of what the player is already looking at. Where a name is needed
+/// for an audit trail it belongs on that record, captured at the time, not on
+/// a row that would rewrite history every time the player renamed.
+model User {
+  /// vRP `user_id`. The identity the server treats as the account, stable
+  /// across reconnects and name changes, so it is the natural key — and, with
+  /// the player name the client reports alongside it, the whole of identity.
+  vrpId Int @id
+
+  role Role @default(player)
+
+  /// Chips held, in whole chips. Never real money, and never in-game cash
+  /// either — this balance only moves when a banker settles a deposit or a
+  /// game pays out. See PRODUCT.md.
+  chips Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
