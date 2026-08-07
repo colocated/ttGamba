@@ -36,12 +36,20 @@ export type Account = {
   chips: number;
 };
 
-const SELECT = { vrpId: true, role: true, chips: true } as const;
-
-/** The stored row, with its `bigint` balance brought over — see lib/rows.ts. */
-type Stored = { vrpId: number; role: Role; chips: bigint };
-
-const asAccount = (row: Stored): Account => ({ ...row, chips: toChips(row.chips) });
+/**
+ * The account and the balance are read as two queries, never as one with
+ * `include: { balance: true }`.
+ *
+ * That is the rule the split exists to make possible. `User` is cached
+ * (lib/db.ts); `Balance` never is. A `User` read that pulled its balance in
+ * through the relation would put a balance inside a cached row, where none of
+ * the invalidation that protects the real one applies — the cache extension
+ * does not see writes made through a relation.
+ *
+ * Two indexed primary-key reads, one of which is answered from Redis on the
+ * common path.
+ */
+const SELECT = { vrpId: true, role: true } as const;
 
 /**
  * Read a player's account, creating it the first time they open the app.
@@ -67,18 +75,36 @@ export async function getAccount(vrpId: number, name?: string | null): Promise<A
   if (id === null) throw new Error("Not a vRP id");
 
   const existing = await prisma.user.findUnique({ where: { vrpId: id }, select: SELECT });
-  if (existing) return asAccount(existing);
+  if (existing) return { ...existing, chips: await readBalance(id) };
 
   try {
-    const created = await prisma.user.create({ data: { vrpId: id }, select: SELECT });
+    // The balance is created with the account, so every `User` has exactly one
+    // and nothing downstream has to allow for a missing row.
+    const created = await prisma.user.create({
+      data: { vrpId: id, balance: { create: {} } },
+      select: SELECT,
+    });
     const who = { vrpId: id, name: readName(name) };
     await recordQuietly({ action: "account.created", actor: who, subject: who });
-    return asAccount(created);
+    return { ...created, chips: 0 };
   } catch {
     // Lost the race with another tab, or the row appeared between the two
     // statements. Either way the account exists now, which is all the caller
     // asked for.
     const raced = await prisma.user.findUniqueOrThrow({ where: { vrpId: id }, select: SELECT });
-    return asAccount(raced);
+    return { ...raced, chips: await readBalance(id) };
   }
+}
+
+/**
+ * A balance on its own.
+ *
+ * `null` only for an account whose balance row has somehow gone; the two are
+ * created together and the foreign key cascades, so it should not happen —
+ * reading it as zero is the honest answer if it does, since a missing balance
+ * is not chips somebody owns.
+ */
+async function readBalance(vrpId: number): Promise<number> {
+  const row = await prisma.balance.findUnique({ where: { vrpId }, select: { chips: true } });
+  return row ? toChips(row.chips) : 0;
 }

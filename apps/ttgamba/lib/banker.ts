@@ -14,13 +14,14 @@
  */
 
 import { record, type Db } from "./audit";
-import { authorise, FORBIDDEN, readId, readNote, readVrpId, type Caller } from "./auth";
+import { ADMIN, authorise, FORBIDDEN, readId, readNote, readVrpId, type Caller } from "./auth";
 import { prisma } from "./db";
 import {
   FLOW_ACTIONS,
   holdsChips,
   PAGE_SIZE,
   requestAction,
+  ROLES,
   STAFF_MOVES,
   STATUS_ORDER,
   type AuditRow,
@@ -78,8 +79,9 @@ export async function getDeskStats(caller: Caller): Promise<Outcome<DeskStats>> 
 
   const since = new Date(Date.now() - DAY);
 
-  const [wallets, open, intake, exfill, settled] = await Promise.all([
-    prisma.user.aggregate({ _sum: { chips: true }, _count: { _all: true } }),
+  const [wallets, players, open, intake, exfill, settled] = await Promise.all([
+    prisma.balance.aggregate({ _sum: { chips: true } }),
+    prisma.user.count(),
     prisma.request.groupBy({
       by: ["kind", "status"],
       where: { status: { in: OPEN } },
@@ -120,7 +122,7 @@ export async function getDeskStats(caller: Caller): Promise<Outcome<DeskStats>> 
     data: {
       chipsInPlay: toChipsTotal(wallets._sum.chips),
       chipsHeld: toChips(chipsHeld),
-      players: wallets._count._all,
+      players,
       pending,
       approved,
       intake24h: toChipsTotal(intake._sum.amount),
@@ -204,10 +206,14 @@ export async function getRequest(
   const request = await prisma.request.findUnique({ where: { id } });
   if (!request) return { ok: false, reason: "gone", message: "That request no longer exists." };
 
-  const [account, held, history] = await Promise.all([
+  const [account, wallet, held, history] = await Promise.all([
     prisma.user.findUnique({
       where: { vrpId: request.vrpId },
-      select: { role: true, chips: true },
+      select: { role: true },
+    }),
+    prisma.balance.findUnique({
+      where: { vrpId: request.vrpId },
+      select: { chips: true },
     }),
     prisma.request.aggregate({
       _sum: { amount: true },
@@ -220,7 +226,7 @@ export async function getRequest(
     ok: true,
     data: {
       request: toRequestRow(request),
-      account: account && { role: account.role, chips: toChips(account.chips) },
+      account: account && { role: account.role, chips: wallet ? toChips(wallet.chips) : 0 },
       heldElsewhere: toChipsTotal(held._sum.amount),
       history: history.map(toAuditRow),
     },
@@ -327,7 +333,7 @@ async function applyToBalance(
 ): Promise<number | null> {
   if (request.kind === "deposit") {
     if (to !== "closed") return null;
-    const credited = await tx.user.update({
+    const credited = await tx.balance.update({
       where: { vrpId: request.vrpId },
       data: { chips: { increment: request.amount } },
       select: { chips: true },
@@ -340,7 +346,7 @@ async function applyToBalance(
   // table forbids it — but the guard is what makes that a fact rather than a
   // reading of another file.
   if (to === "denied" && holdsChips(request.status)) {
-    const refunded = await tx.user.update({
+    const refunded = await tx.balance.update({
       where: { vrpId: request.vrpId },
       data: { chips: { increment: request.amount } },
       select: { chips: true },
@@ -349,7 +355,7 @@ async function applyToBalance(
   }
 
   if (to === "closed") {
-    const after = await tx.user.findUnique({
+    const after = await tx.balance.findUnique({
       where: { vrpId: request.vrpId },
       select: { chips: true },
     });
@@ -412,7 +418,11 @@ export async function lookupPlayer(
     };
   }
 
-  const [requests, held, deposited, withdrawn, events] = await Promise.all([
+  const [wallet, requests, held, deposited, withdrawn, events] = await Promise.all([
+    // Read alongside the account rather than through `include: { balance: true }`
+    // — see prisma/schema.prisma. `User` is cached; a balance carried in on its
+    // relation would be cached with it.
+    prisma.balance.findUnique({ where: { vrpId: id }, select: { chips: true } }),
     prisma.request.findMany({ where: { vrpId: id }, orderBy: { id: "desc" }, take: PAGE_SIZE }),
     prisma.request.aggregate({
       _sum: { amount: true },
@@ -441,7 +451,7 @@ export async function lookupPlayer(
     data: {
       vrpId: account.vrpId,
       role: account.role,
-      chips: toChips(account.chips),
+      chips: wallet ? toChips(wallet.chips) : 0,
       held: toChipsTotal(held._sum.amount),
       createdAt: account.createdAt.getTime(),
       identity: latest
@@ -517,4 +527,80 @@ function readTime(value: unknown): Date | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Change what someone is allowed to do.
+ *
+ * Administrators only, and the one place a role is written. Before this
+ * existed, roles were set by hand in `pnpm db:studio` — which worked, but was
+ * a write Prisma never saw, so nothing downstream could react to it. That
+ * matters now that `User` is cached (lib/db.ts): a role change made outside
+ * Prisma leaves every cached copy of the old role in place until it expires.
+ * Going through here purges it on the spot.
+ *
+ * Refuses to change your own role, which is not paranoia about privilege
+ * escalation — an administrator can already promote an accomplice — but about
+ * the accident of demoting yourself out of the panel you are standing in, with
+ * nobody left able to put you back.
+ */
+export async function setRole(
+  caller: Caller,
+  vrpId: number,
+  role: Role,
+): Promise<Outcome<{ vrpId: number; role: Role }>> {
+  const who = await authorise(caller, ADMIN);
+  if (!who) return FORBIDDEN;
+
+  const id = readVrpId(vrpId);
+  if (id === null) {
+    return { ok: false, reason: "invalid", message: "A vRP ID is a whole number." };
+  }
+  if (!ROLES.includes(role)) {
+    return { ok: false, reason: "invalid", message: "That is not a role." };
+  }
+  if (id === who.vrpId) {
+    return {
+      ok: false,
+      reason: "invalid",
+      message: "You cannot change your own role. Ask another administrator.",
+    };
+  }
+
+  const subject = await prisma.user.findUnique({
+    where: { vrpId: id },
+    select: { role: true },
+  });
+  if (!subject) {
+    return {
+      ok: false,
+      reason: "unknown-player",
+      message: `Nobody with vRP ID ${id} has opened ttGamba.`,
+    };
+  }
+  // Nothing to write, and nothing worth a line in the trail either.
+  if (subject.role === role) return { ok: true, data: { vrpId: id, role } };
+
+  // The name is whatever they last told the desk; there is no stored copy
+  // (prisma/schema.prisma), so a player who has never used it is named by id.
+  const latest = await prisma.request.findFirst({
+    where: { vrpId: id },
+    orderBy: { id: "desc" },
+    select: { playerName: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { vrpId: id }, data: { role } });
+    await record(
+      {
+        action: "role.changed",
+        actor: { vrpId: who.vrpId, name: who.name, role: who.role },
+        subject: { vrpId: id, name: latest?.playerName ?? null },
+        detail: { from: subject.role, to: role },
+      },
+      tx,
+    );
+  });
+
+  return { ok: true, data: { vrpId: id, role } };
 }

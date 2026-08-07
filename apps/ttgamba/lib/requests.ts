@@ -5,7 +5,7 @@
  *
  * The settings page is where a player reaches all three: the two buttons beside
  * their chip balance open the form, and the list under it is what they see
- * afterwards (components/requests.tsx).
+ * afterwards (components/settings/requests.tsx).
  *
  * ── When chips actually move ──────────────────────────────────────────────
  * The two kinds settle at opposite ends of their life, and the asymmetry is
@@ -106,13 +106,13 @@ export async function createRequest(
         moment earlier, and only the database can decide between them. `count`
         is how it reports which one lost.
       */
-      const held = await tx.user.updateMany({
+      const held = await tx.balance.updateMany({
         where: { vrpId: who.vrpId, chips: { gte: toStored(amount) } },
         data: { chips: { decrement: toStored(amount) } },
       });
       if (held.count !== 1) return null;
 
-      const after = await tx.user.findUniqueOrThrow({
+      const after = await tx.balance.findUniqueOrThrow({
         where: { vrpId: who.vrpId },
         select: { chips: true },
       });
@@ -191,7 +191,7 @@ export async function cancelRequest(
 
     let balanceAfter: number | null = null;
     if (existing.kind === "withdrawal") {
-      const refunded = await tx.user.update({
+      const refunded = await tx.balance.update({
         where: { vrpId: who.vrpId },
         data: { chips: { increment: existing.amount } },
         select: { chips: true },

@@ -42,6 +42,36 @@ model User {
 
   role Role @default(player)
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  balance  Balance?
+  requests Request[]
+}
+
+/// A player's chips, kept apart from the account that owns them.
+///
+/// One row per `User`, created with it. The split is not normalisation for its
+/// own sake — it is what makes `User` cacheable (lib/db.ts):
+///
+/// A balance moves on every settled request and every payout, and a row that
+/// is written constantly cannot be cached by anything. While `chips` lived on
+/// `User`, caching `User` would have meant purging it on every chip movement,
+/// so the role and identity beside it — read on every navigation and every
+/// desk call, and changed almost never — could never be cached either. Apart,
+/// each is cached according to how it actually behaves.
+///
+/// The consequence to respect: **never read a `User` with its `balance`
+/// included.** A cached `User` row carrying an embedded balance is a stale
+/// balance with none of the invalidation that protects the real one, and the
+/// cache extension does not detect writes through a relation. Read the two
+/// separately; `lib/account.ts` is the example.
+model Balance {
+  /// The account this belongs to. Shared primary key, so a player cannot have
+  /// two balances and a balance cannot outlive its account.
+  vrpId Int  @id
+  user  User @relation(fields: [vrpId], references: [vrpId], onDelete: Cascade)
+
   /// Chips held, in whole chips. Never real money, and never in-game cash
   /// either — this balance only moves when a banker settles a deposit or a
   /// game pays out. See PRODUCT.md.
@@ -54,16 +84,12 @@ model User {
   /// `BigInt`, not `Int`, and this is the reason: Prisma's `Int` is a 32-bit
   /// signed integer, which stops at 2,147,483,647 — and this server's high
   /// rollers bet in billions. SQLite's own `INTEGER` was always 64 bits, so
-  /// the ceiling was never the database's; the column SQL is unchanged. What
-  /// changes is the type Prisma hands back, and lib/rows.ts is where that
-  /// becomes a `number` again. See `AMOUNT_LIMIT` in lib/desk.ts for why that
-  /// last step is safe.
+  /// the ceiling was never the database's. What changes is the type Prisma
+  /// hands back, and lib/rows.ts is where that becomes a `number` again. See
+  /// `AMOUNT_LIMIT` in lib/desk.ts for why that last step is safe.
   chips BigInt @default(0)
 
-  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  requests Request[]
 }
 
 /// Which way across the boundary the chips are meant to go.
