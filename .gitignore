@@ -1,8 +1,15 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+#
+# Patterns here are deliberately unanchored. This was a single-app repository
+# and every rule below started with a leading slash, which matches the repo root
+# and nothing else — the moment the app moved to apps/ttgamba/ they all silently
+# stopped matching and node_modules, build output and the generated Prisma
+# client became committable. Keep new rules unanchored unless a rule genuinely
+# only ever applies at the root.
 
 # dependencies
-/node_modules
-/.pnp
+node_modules
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -11,14 +18,14 @@
 !.yarn/versions
 
 # testing
-/coverage
+coverage
 
 # next.js
-/.next/
-/out/
+.next/
+out/
 
 # production
-/build
+build
 
 # misc
 .DS_Store
@@ -42,6 +49,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# turbo
+.turbo
+
 # prisma
 # The local dev database. Migrations are the source of truth for its shape, so
 # a checked-in binary would only ever be one contributor's copy of the data.
@@ -50,4 +60,6 @@ next-env.d.ts
 *.db-wal
 *.db-shm
 # Generated from schema.prisma by `prisma generate`, which `postinstall` runs.
-/lib/generated
+# A pattern with a slash in it is anchored no matter where the slash falls, so
+# `lib/generated` would only ever have matched the old root-level app.
+**/lib/generated
