@@ -1,0 +1,113 @@
+/*
+  Everything a user app must do regardless of how it looks.
+
+  Nothing in this file is taste. An app that overrides one of these rules has a
+  bug — see the README's "What must not change". Colours, radii and motion
+  timings are all in tokens.css, which is the file to restate.
+
+  Import order matters:
+
+      @import "tailwindcss";
+      @import "@tt/window/base.css";
+      @import "@tt/window/tokens.css";
+
+  This file references token names (`--color-edge`), so it reads whatever
+  tokens.css or the app declared, wherever those land.
+*/
+
+@layer base {
+  /*
+    The user app is handed the whole game viewport, so everything outside the
+    window has to stay see-through or we black out the player's screen. This is
+    the one rule in here that is instantly, obviously fatal to break.
+  */
+  html,
+  body {
+    background: transparent;
+  }
+
+  /* Focus rings are the only permitted "depth" effect (DESIGN.md). */
+  :focus-visible {
+    outline: 2px solid var(--color-felt-hi);
+    outline-offset: 2px;
+  }
+
+  /*
+    Scrollbars, macOS-style: no track, no arrows, just a thin rounded thumb.
+    The platform default is a light-grey column with stepper buttons that
+    lands on the window like a piece of somebody else's UI — it reads as
+    part of the desktop rather than part of the app.
+
+    The gutter stays 10px so the thumb has room to sit clear of the edge,
+    but the thumb itself is painted inside a transparent 3px border
+    (`background-clip: padding-box`), which leaves ~4px of visible bar. The
+    track is transparent, so the surface underneath — stage, drawer or
+    raised panel — is what shows through, and the scrollbar picks up the
+    tone of whatever it is scrolling.
+  */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Steppers. Zero-sized rather than `display: none`, which Chromium ignores. */
+  ::-webkit-scrollbar-button {
+    width: 0;
+    height: 0;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-edge);
+    background-clip: padding-box;
+    border: 3px solid transparent;
+    /* Half of the 10px gutter — a capsule, and inside the 8px ceiling. */
+    border-radius: 5px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-edge-strong);
+  }
+
+  /*
+    Firefox has no pseudo-elements for this, and its standard properties are
+    all the control there is. Guarded, because Chromium honours
+    `scrollbar-width`/`scrollbar-color` in preference to everything above —
+    setting them unguarded would trade the thumb we just drew for the
+    engine's own 11px one.
+  */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-edge) transparent;
+    }
+  }
+
+  /*
+    ── Reduced motion: shortened, never switched off ─────────────────────────
+    Two of these are load-bearing rather than tidy.
+
+    The odometer's end state is carried by its animation's fill, so removing it
+    would leave the strip parked on the digit it started from — the old figure,
+    frozen. A duration this short lands on the new one immediately, which is
+    what was asked for.
+
+    The minimise is committed by the frame's `animationend`
+    (use-window-frame.ts); an animation that never runs never fires it, and the
+    window would refuse to minimise at all — leaving the player holding a
+    full-screen surface they just asked to put away.
+    ─────────────────────────────────────────────────────────────────────────
+  */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --tt-roll-time: 1ms;
+      --tt-sheet-time: 1ms;
+      --tt-drawer-time: 1ms;
+      --tt-window-time: 1ms;
+    }
+  }
+}

@@ -1,14 +1,11 @@
 /**
  * The pre-React boot script, and the names it shares with the rest of the app.
  *
- * Deliberately not a `"use client"` module: the root layout is a server
- * component and has to read these values at render time to inline the script.
- * Importing them from `settings.ts` would reach into the client graph and hand
- * the server a client reference instead of a string.
+ * Deliberately not a `"use client"` module: a root layout is a server component
+ * and has to read these values at render time to inline the script. Importing
+ * them from a client module would reach into the client graph and hand the
+ * server a client reference instead of a string.
  */
-
-/** Our key in the client's `local_` namespace, and in `localStorage`. */
-export const SETTINGS_KEY = "ttgamba_settings";
 
 /**
  * Geometry the boot script writes onto `:root` before the first paint, so the
@@ -40,12 +37,21 @@ export const GEOMETRY_VARS = {
  *
  * Kept as a string rather than a module so it ships inline in the HTML — a
  * script that has to be fetched is a script that can fail to arrive, which is
- * the failure this is here to cover.
+ * the failure this is here to cover. Render it with
+ * `<Script strategy="beforeInteractive">`, which is what puts it in the head
+ * ahead of any Next.js module.
+ *
+ * `settingsKey` is the app's own key — the same one handed to
+ * `createSettingsStore`. It is a parameter rather than a constant because two
+ * apps loaded in the same client share one `localStorage` origin only by
+ * accident of deployment, but share the game client's `local_` namespace
+ * always: a fixed key would have them reading each other's window geometry.
  */
-export const BOOTSTRAP_SCRIPT = `
+export function bootstrapScript(settingsKey: string): string {
+  return `
 (function () {
   try {
-    var raw = window.localStorage.getItem(${JSON.stringify(SETTINGS_KEY)});
+    var raw = window.localStorage.getItem(${JSON.stringify(settingsKey)});
     if (raw) {
       var parsed = JSON.parse(raw);
       var s = parsed && parsed.v ? parsed.v : parsed;
@@ -78,3 +84,4 @@ export const BOOTSTRAP_SCRIPT = `
   });
 })();
 `;
+}

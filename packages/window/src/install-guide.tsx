@@ -3,13 +3,16 @@
 /**
  * What the whole window shows when there is no game client behind it.
  *
- * Almost always this is ttGamba open in an ordinary browser tab — someone was
+ * Almost always this is the app open in an ordinary browser tab — someone was
  * sent the link and opened it the only way a link can be opened. The app is
  * working exactly as built and simply has nothing to show, so this is toned as
  * instructions rather than an error: no red, no warning triangle, nothing has
- * gone wrong. What that person needs is the four steps that turn a browser tab
+ * gone wrong. What that person needs is the three steps that turn a browser tab
  * into an installed user app, and the address to paste, which is the one thing
  * they cannot be expected to type out correctly from memory.
+ *
+ * That doubles as how an app is handed to a player: sending them the link and
+ * letting them open it lands them on these instructions.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -20,7 +23,17 @@ import { PlugsIcon } from "@phosphor-icons/react/dist/csr/Plugs";
 /** How long "Copied" stays up before the button offers to copy again. */
 const COPIED_FOR = 2000;
 
-export function InstallGuide() {
+export function InstallGuide({
+  appName,
+  blurb,
+}: {
+  appName: string;
+  /**
+   * What the app is, in a sentence. The default says only what is true of every
+   * user app; an app with a reason to be more specific passes its own.
+   */
+  blurb?: string;
+}) {
   const address = useAddress();
 
   return (
@@ -29,8 +42,8 @@ export function InstallGuide() {
         <PlugsIcon size={32} className="text-ink-muted" aria-hidden />
         <h1 className="text-base font-semibold tracking-tight">No game data</h1>
         <p className="max-w-sm text-sm text-ink-soft">
-          ttGamba runs inside Transport Tycoon and reads your character from the
-          game client. Load it in game to play.
+          {blurb ??
+            `${appName} runs inside Transport Tycoon and reads your character from the game client. Load it in game to use it.`}
         </p>
       </div>
 

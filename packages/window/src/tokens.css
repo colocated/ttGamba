@@ -1,0 +1,299 @@
+/*
+  The window's design tokens.
+
+  Everything here is a preference and every one of them can be restated by an
+  app — Tailwind resolves whichever `@theme` declaration comes last, so an app's
+  own `globals.css` can redeclare any name below *after* importing this file and
+  the whole window changes with it, no TSX touched. That is the intended way to
+  make a second app look different; see the README.
+
+  Two rules from DESIGN.md drive the values that are here:
+
+  1. Depth is surface tone only. No shadows, no gradients, no blur. A thing
+     that should read as "closer" gets a lighter tone, not a shadow.
+  2. Max border-radius is 8px. Motion is earned — colour transitions run at
+     120ms ease-out, and anything more has to be doing a job.
+
+  The window chrome is translucent so the game reads through it. Raised
+  surfaces on the stage are opaque — being solid against a see-through
+  backdrop is what makes them read as lifted without a shadow.
+
+  The `--tt-*` timings at the bottom are plain custom properties rather than
+  `@theme` entries because they are read by `var()` inside keyframes. base.css
+  shortens them under `prefers-reduced-motion`, and two of them must never
+  reach zero — the reasoning is there.
+*/
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  /* Tone ladder, darkest to lightest. Prefer the semantic names below. */
+  --color-tone-0: #12171d;
+  --color-tone-1: #171d24;
+  --color-tone-2: #1f262e;
+  --color-tone-3: #262e38;
+  --color-tone-4: #2b333d;
+  --color-tone-5: #354050;
+  --color-tone-6: #3f4b5c;
+
+  /*
+    The window is one continuous translucent surface — titlebar, shelf and
+    stage all sit on `stage`, and anything that should read as "on top" is a
+    tone step above it rather than a differently-coloured region.
+  */
+  --color-stage: rgb(23 29 36 / 0.9);
+  /* Opaque, so the shelf drawer floating over the stage doesn't double-darken. */
+  --color-drawer: #1a2129;
+
+  /* Opaque raised surfaces, for content sitting on the stage. */
+  --color-raised: #212932;
+  --color-raised-hi: #2a333e;
+  --color-raised-hover: #313b47;
+
+  /* Hairlines. */
+  --color-edge: #38424f;
+  --color-edge-strong: #4a5665;
+
+  /* Text. */
+  --color-ink: #eef1f5;
+  --color-ink-soft: #a8b2c0;
+  --color-ink-muted: #6e7a89;
+
+  /*
+    Accents. `felt` is the action colour and `chip` is the one figures are
+    printed in — the names are the casino's, and an app that is not one should
+    restate the values rather than invent parallel names, because the window's
+    own chrome reads `felt-hi` for its focus ring and its active states.
+  */
+  --color-felt: #2f9e6b;
+  --color-felt-hi: #38b87c;
+  --color-chip: #d8a83e;
+  --color-loss: #d1565b;
+  /*
+    Finished, and no longer anybody's problem. A fourth state that is neither in
+    progress (felt), nor money (chip), nor a refusal (loss). Blue is the one hue
+    left that says "done" without saying "well done".
+  */
+  --color-settled: #4f8ccc;
+
+  /* 8px ceiling — see DESIGN.md. */
+  --radius-panel: 8px;
+  --radius-control: 6px;
+  --radius-chip: 4px;
+
+  /*
+    Refresh re-pulls data without reloading the page, so nothing on screen
+    necessarily changes when it fires — the spin is what tells the player it
+    did anything.
+  */
+  --animate-refresh: refresh-spin 500ms ease-out;
+
+  @keyframes refresh-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /*
+    A figure changing. Each digit column rolls through the numbers between the
+    old value and the new one, travelling up for a gain and down for a loss —
+    the direction is readable before the number has settled. `both` matters:
+    the strip has to be parked on the *starting* digit before the first frame,
+    and held on the finishing one after the last. See odometer.tsx.
+  */
+  --animate-roll: roll var(--tt-roll-time) ease-out both;
+  /* The tint that runs alongside, easing back to the resting colour. */
+  --animate-gain: settle-gain var(--tt-roll-time) ease-out;
+  --animate-loss: settle-loss var(--tt-roll-time) ease-out;
+
+  @keyframes roll {
+    from {
+      transform: translateY(var(--tt-roll-from, 0));
+    }
+    to {
+      transform: translateY(var(--tt-roll-to, 0));
+    }
+  }
+
+  @keyframes settle-gain {
+    from {
+      color: var(--color-felt-hi);
+    }
+    to {
+      color: var(--color-chip);
+    }
+  }
+
+  @keyframes settle-loss {
+    from {
+      color: var(--color-loss);
+    }
+    to {
+      color: var(--color-chip);
+    }
+  }
+
+  /*
+    A modal arriving, and leaving. The job is to show where it came from — it
+    is the row that was just pressed, opened out — so the panel rises a little
+    as it lands rather than appearing at full size from nowhere, and retreats
+    the same way it came. Flat easing, no overshoot, and well inside the
+    ~500ms ceiling (DESIGN.md).
+
+    The way out is the way in, played backwards, which is what keeps the two
+    reading as one gesture rather than two effects. `both` on the exit matters:
+    the panel has to hold its finished state for the frame between the animation
+    ending and React unmounting it, or it flashes back to full opacity on the
+    way out.
+
+    ── Why the exit has keyframes of its own ─────────────────────────────────
+    Backwards, but *not* `sheet-in ... reverse`. An animation restarts only when
+    its `animation-name` changes; every other `animation-*` property is applied
+    to the animation already on the element, keeping its current time. Reusing
+    the name would therefore hand a finished enter animation a new direction
+    rather than starting an exit — the panel would snap to the hidden keyframe
+    and, because it never restarted, would never fire a second `animationend`.
+
+    That event is what unmounts the modal (overlay.tsx), so the parent would go
+    on believing the modal was open: the page looks right, but the button that
+    opened it sets the state it is already in and nothing happens until a
+    navigation unmounts the page. Separate names, always.
+    ─────────────────────────────────────────────────────────────────────────
+  */
+  --animate-scrim: scrim-in 120ms ease-out;
+  --animate-sheet: sheet-in var(--tt-sheet-time) ease-out;
+  --animate-scrim-out: scrim-out 120ms ease-out both;
+  --animate-sheet-out: sheet-out var(--tt-sheet-time) ease-out both;
+
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes scrim-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes sheet-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes sheet-out {
+    from {
+      opacity: 1;
+      transform: none;
+    }
+    to {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
+  /*
+    Minimising, and coming back.
+
+    This is the one case DESIGN.md's motion rule names outright — showing where
+    a thing went. The window does not simply disappear and a box appear in the
+    corner: it recedes, and then the corner tab arrives. Two beats in sequence,
+    so the second reads as what became of the first.
+
+    Same easing and roughly the same distance as the modal above, because it is
+    the same gesture at a different scale. Separate names for the two directions
+    for the same reason `sheet-out` has its own, and it matters more here: the
+    frame's `animationend` is what commits the minimise, and reusing a name would
+    hand a finished animation a new direction instead of restarting it — so the
+    event would never fire and the window would sit half-faded forever.
+
+    ── Why `scale` and not `transform` ───────────────────────────────────────
+    The frame carries a transform already: an undragged window is centred with
+    `translate(-50%, -50%)` (use-window-frame.ts). A keyframe setting
+    `transform: scale(...)` would replace it outright, and the window would
+    throw itself at the top-left corner for the length of the animation. `scale`
+    is an independent property and composes with whatever transform is there, so
+    the centring survives. A client too old to know it drops the scale and keeps
+    the fade, which is a smaller version of the same thing rather than a broken
+    one.
+    ─────────────────────────────────────────────────────────────────────────
+  */
+  --animate-window-out: window-out var(--tt-window-time) ease-out both;
+  --animate-window-in: window-in var(--tt-window-time) ease-out;
+  --animate-tab-in: tab-in var(--tt-sheet-time) ease-out;
+
+  @keyframes window-out {
+    from {
+      opacity: 1;
+      scale: 1;
+    }
+    to {
+      opacity: 0;
+      scale: 0.97;
+    }
+  }
+
+  @keyframes window-in {
+    from {
+      opacity: 0;
+      scale: 0.97;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+
+  @keyframes tab-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+@layer base {
+  :root {
+    /*
+      How long a figure takes to roll. Within the ~500ms ceiling DESIGN.md puts
+      on anything larger than a colour change.
+    */
+    --tt-roll-time: 420ms;
+    /* How long a modal takes to land. See `sheet-in`. */
+    --tt-sheet-time: 160ms;
+    /*
+      How long the window takes to minimise, and to come back. A touch slower
+      than a modal: it is the whole window rather than a panel on top of one,
+      and the corner tab does not appear until this has finished, so the two
+      beats want to be told apart. Well inside the ~500ms ceiling.
+    */
+    --tt-window-time: 200ms;
+    /*
+      How long a drawer takes to open. Longer than a modal because it is pushing
+      the page below it out of the way rather than landing on top of one — the
+      slide is the only thing that says where the new content came from.
+    */
+    --tt-drawer-time: 200ms;
+  }
+}

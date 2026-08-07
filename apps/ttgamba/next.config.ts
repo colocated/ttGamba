@@ -1,42 +1,27 @@
-import { execSync } from "node:child_process";
 import type { NextConfig } from "next";
+import { withUserApp } from "@tt/window/next-config";
 
-import { GAMES } from "./lib/games";
+/*
+  `withUserApp` supplies everything that is true of every user app in this
+  workspace: standalone output, the tracing root that makes it work in a pnpm
+  monorepo, `transpilePackages` for the two workspace packages, the build id the
+  update banner compares against, and the Phosphor barrel workaround. See
+  packages/window/src/next-config.ts — each of those has a reason and most of
+  them fail quietly rather than loudly.
 
-/**
- * Identifies this build, so a running app can notice it is out of date.
- *
- * The timestamp is what makes the comparison work: a rebuild of the same
- * commit is still a new bundle, and a client holding the old one still needs
- * telling. The commit is along for readability when debugging which build a
- * player is on.
- *
- * Deliberately *not* wired to `deploymentId`. Next's own skew handling reacts
- * to a mismatch by forcing a full page reload, and this app is a full-screen
- * iframe that holds the game's input focus — a reload it cannot control is the
- * one thing that can strand a player. We detect the same condition and put a
- * banner up instead. See components/update-banner.tsx.
- */
-const BUILD_ID = `${commit()}-${Date.now().toString(36)}`;
-
-function commit() {
-  try {
-    return execSync("git rev-parse --short HEAD", {
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .toString()
-      .trim();
-  } catch {
-    // No git, or no commits yet. The timestamp alone still identifies a build.
-    return "nogit";
-  }
-}
-
+  What is left here is ttGamba's alone.
+*/
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
   /**
-   * There is no lobby yet, so the app opens on the first game in the shelf.
+   * The app opens on the games index.
+   *
+   * It used to open on the first game in the shelf, which was possible because
+   * the shelf was a constant this file could import. Games are database rows
+   * now (prisma/schema.prisma) and there is no first game at build time, so the
+   * redirect has to land somewhere that does not depend on one. `/play` is the
+   * list itself — which is the better door anyway, since opening on blackjack
+   * told every player that blackjack was the point of the app.
    *
    * This is a routing rule and not a `redirect()` in a page component, which is
    * what it used to be. That version was actively dangerous here: `redirect()`
@@ -50,37 +35,18 @@ const nextConfig: NextConfig = {
    *
    * The visible result is the one failure this app cannot have: a blank
    * full-screen iframe still holding the game's input focus, with no way back
-   * out (components/tablet.tsx).
+   * out.
    *
    * Answering at the routing layer means `/` is a 307 before any React runs.
    * Redirects are matched ahead of filesystem routes, so there is deliberately
    * no `app/page.tsx` — this is the whole of what `/` does.
    *
-   * Not `permanent`: browsers cache a 308 indefinitely, and this is a
-   * placeholder for a lobby rather than a fact about the app.
+   * Not `permanent`: browsers cache a 308 indefinitely, and where the app opens
+   * is a decision rather than a fact about the app.
    */
   async redirects() {
-    return [{ source: "/", destination: GAMES[0].href, permanent: false }];
-  },
-  /*
-    The dev indicator floats over the app's own bottom-right corner, which is
-    where the resize grip lives — in dev it sits on top of the one control the
-    window is meant to be grabbed by. Compile and runtime errors still surface.
-  */
-  devIndicators: false,
-  generateBuildId: () => BUILD_ID,
-  /* Inlined into the client bundle, so the page carries the build it came from. */
-  env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
-  experimental: {
-    /*
-      `@phosphor-icons/react` is a barrel over ~3000 icon modules, and importing
-      a handful by name pulls the lot. In dev that is thousands of module
-      requests standing between load and hydration — the window paints, but
-      nothing in it responds until they land. Next names this package
-      specifically in its local-development guide.
-    */
-    optimizePackageImports: ["@phosphor-icons/react"],
+    return [{ source: "/", destination: "/play", permanent: false }];
   },
 };
 
-export default nextConfig;
+export default withUserApp(nextConfig);

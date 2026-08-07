@@ -20,7 +20,7 @@
 
 import { useId, useLayoutEffect, useRef, useState } from "react";
 
-import { CloseButton, Overlay, useClose } from "@/components/overlay";
+import { CloseButton, Overlay, useClose } from "@tt/window";
 import { Button, ChipAmount, Empty, Problem, StatusPill, When } from "@/components/banker/ui";
 import {
   AMOUNT_LIMIT,
@@ -31,7 +31,7 @@ import {
   type RequestRow,
 } from "@/lib/desk";
 import { formatChipCount, formatMagnitude } from "@/lib/format";
-import type { Player } from "@/lib/gamedata";
+import type { Player } from "@tt/userapp/gamedata";
 import { createRequest, cancelRequest } from "@/lib/requests";
 import { useDeskAction } from "@/lib/staff";
 

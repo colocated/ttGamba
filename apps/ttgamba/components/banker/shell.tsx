@@ -12,11 +12,10 @@
  */
 
 import { createContext, useCallback, useContext } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { LockKeyIcon } from "@phosphor-icons/react/dist/csr/LockKey";
 
 import { Panel, Stage, Tag } from "@/components/stage";
+import { Tabs, type Tab } from "@tt/window";
 import { getDeskStats, type DeskStats } from "@/lib/banker";
 import type { Caller } from "@/lib/desk";
 import { ROLE_LABELS, ROLE_TONES } from "@/lib/desk";
@@ -39,6 +38,20 @@ const TABS = [
   { href: "/banker/players", label: "Player Lookup" },
   { href: "/banker/audit", label: "Audit Log" },
 ] as const;
+
+/** The tabs, with each queue's wait hung off the tab that clears it. */
+function deskTabs(pending?: Record<string, number>): Tab[] {
+  return TABS.map((tab) => {
+    const waiting = "queue" in tab ? (pending?.[tab.queue] ?? 0) : 0;
+    return {
+      href: tab.href,
+      label: tab.label,
+      exact: "exact" in tab,
+      badge: waiting,
+      badgeTitle: `${waiting} waiting`,
+    };
+  });
+}
 
 /**
  * The desk figures, fetched once for the whole panel.
@@ -75,7 +88,7 @@ export function BankerShell({ children }: { children: React.ReactNode }) {
         blurb="Take in deposits, pay out withdrawals, and see what the house owes."
         aside={role ? <Tag tone={ROLE_TONES[role]}>{ROLE_LABELS[role]}</Tag> : null}
       >
-        <TabBar pending={stats.data?.pending} />
+        <Tabs label="Banker desk" tabs={deskTabs(stats.data?.pending)} />
         {children}
       </Stage>
     </StatsContext.Provider>
@@ -105,51 +118,5 @@ function NoAccess() {
         </div>
       </Panel>
     </Stage>
-  );
-}
-
-/**
- * The tabs.
- *
- * Links rather than local state, so each tab is somewhere a banker can be sent
- * and somewhere the back button understands. It also means switching tabs is a
- * navigation, which is what re-checks the role (lib/staff.ts) — clicking around
- * the panel is exactly the "few clicks" in which a revoked role takes effect.
- */
-function TabBar({ pending }: { pending?: Record<string, number> }) {
-  const pathname = usePathname();
-
-  return (
-    <nav aria-label="Banker desk" className="-mb-px flex gap-1 overflow-x-auto border-b border-edge">
-      {TABS.map((tab) => {
-        // `exact` is only on the index: every other tab is a prefix of nothing,
-        // but `/banker` is a prefix of all of them.
-        const active = "exact" in tab && tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
-        const waiting = "queue" in tab ? (pending?.[tab.queue] ?? 0) : 0;
-
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            aria-current={active ? "page" : undefined}
-            className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm transition-colors duration-120 ease-out ${
-              active
-                ? "border-felt-hi font-medium text-ink"
-                : "border-transparent text-ink-soft hover:border-edge-strong hover:text-ink"
-            }`}
-          >
-            {tab.label}
-            {waiting > 0 ? (
-              <span
-                className="rounded-chip border border-chip/50 bg-chip/10 px-1.5 py-0.5 font-mono text-[11px] tabular-nums leading-none text-chip"
-                title={`${waiting} waiting`}
-              >
-                {waiting}
-              </span>
-            ) : null}
-          </Link>
-        );
-      })}
-    </nav>
   );
 }

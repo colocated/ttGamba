@@ -1,0 +1,40 @@
+{
+  "name": "@tt/window",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "//": "Source is published, not build output — `withUserApp` puts this in each app's transpilePackages and Next compiles it with their own. No build step, no watch mode, no stale dist.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./next-config": "./src/next-config.ts",
+    "./bootstrap": "./src/bootstrap.ts",
+    "./base.css": "./src/base.css",
+    "./tokens.css": "./src/tokens.css"
+  },
+  "scripts": {
+    "lint": "eslint src bin"
+  },
+  "dependencies": {
+    "@tt/userapp": "workspace:*"
+  },
+  "peerDependencies": {
+    "@phosphor-icons/react": ">=2",
+    "next": ">=16",
+    "react": ">=19",
+    "react-dom": ">=19"
+  },
+  "devDependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "typescript": "^5"
+  },
+  "bin": {
+    "tt-serve": "./bin/serve.mjs"
+  }
+}

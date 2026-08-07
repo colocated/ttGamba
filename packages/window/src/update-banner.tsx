@@ -4,7 +4,7 @@ import { useState } from "react";
 import { InfoIcon } from "@phosphor-icons/react/dist/csr/Info";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 
-import { useUpdateAvailable } from "@/lib/version";
+import { useUpdateAvailable } from "./version";
 
 /**
  * Tells the player their app is running an old build.
@@ -13,6 +13,9 @@ import { useUpdateAvailable } from "@/lib/version";
  * what has stranded players before, and the userapp's URL bar belongs to the
  * parent frame, so we cannot drive it. Asking is the only safe option — and
  * the URL bar is the one control that cannot be broken by anything we render.
+ *
+ * Rendered by `Tablet` with nothing to configure. It needs `/api/version` to
+ * exist in the app and to answer with the build id — see ./version.ts.
  */
 export function UpdateBanner() {
   const available = useUpdateAvailable();

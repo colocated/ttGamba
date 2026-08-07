@@ -5,9 +5,17 @@
  * running.
  *
  * We cannot act on it: reloading the document is what strands players when it
- * goes wrong (see components/tablet.tsx), and we cannot reach the userapp's
+ * goes wrong (see ./use-window-frame.ts), and we cannot reach the userapp's
  * URL bar from inside the iframe. So this only reports, and the banner asks
  * the player to re-paste the URL themselves.
+ *
+ * Two things an app has to supply for this to say anything:
+ *
+ * - `NEXT_PUBLIC_BUILD_ID`, inlined at build time. `withUserApp` sets it.
+ * - `GET /api/version`, answering `{ buildId }` from the same variable, with
+ *   `dynamic = "force-dynamic"` — a cached answer defeats the whole point.
+ *
+ * Without either, this stays quiet rather than nagging.
  */
 
 import { useEffect, useState } from "react";

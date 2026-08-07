@@ -15,7 +15,7 @@
 
 import { useCallback, useState } from "react";
 
-import { CloseButton, Overlay } from "@/components/overlay";
+import { CloseButton, Overlay } from "@tt/window";
 import { getRequest, moveRequest } from "@/lib/banker";
 import type { Caller, RequestStatus } from "@/lib/desk";
 import { describeAction, KINDS, NOTE_LIMIT, ROLE_LABELS, STAFF_MOVES, STATUSES } from "@/lib/desk";

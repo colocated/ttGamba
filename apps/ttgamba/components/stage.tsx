@@ -1,51 +1,17 @@
+import { Count, Panel, Stage } from "@tt/window";
+
 import type { Tone } from "@/lib/desk";
 
 /**
- * Shared chrome for anything rendered in the window's right-hand pane, so every
- * game and settings page gets the same header rhythm.
+ * ttGamba's page furniture.
+ *
+ * `Stage`, `Panel` and `Count` are the window's own and are re-exported rather
+ * than redefined, so a page imports its furniture from one place regardless of
+ * which side of the package boundary a given piece lives on. What is defined
+ * here is the part that is about *this* app: a tone vocabulary in which
+ * `settled` means a request whose chips have moved.
  */
-export function Stage({
-  title,
-  blurb,
-  aside,
-  children,
-}: {
-  title: string;
-  blurb?: string;
-  /** Optional top-right slot — status pills, round timers, and so on. */
-  aside?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-5 p-5">
-      <header className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
-          {blurb ? <p className="text-sm text-ink-soft">{blurb}</p> : null}
-        </div>
-        {aside ? <div className="shrink-0">{aside}</div> : null}
-      </header>
-      {children}
-    </div>
-  );
-}
-
-/** An opaque raised surface. Opacity against the translucent stage is the depth cue. */
-export function Panel({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section
-      className={`rounded-panel border border-edge bg-raised p-4 ${className}`.trim()}
-    >
-      {children}
-    </section>
-  );
-}
+export { Count, Panel, Stage };
 
 /**
  * A tone, as colours. Border, tint and text — the fill stays at a tenth so a
@@ -63,7 +29,19 @@ export const TONES: Record<Tone, string> = {
   muted: "border-edge/60 bg-tone-2 text-ink-muted",
 };
 
-/** Small inline label. Squared off — no pills anywhere (DESIGN.md). */
+/**
+ * Small inline label. Squared off — no pills anywhere (DESIGN.md).
+ *
+ * `inline-flex`, not plain inline, and that is load-bearing rather than tidy.
+ * A tag often holds a glyph beside its text, and the obvious way to line those
+ * up is a `flex` span inside — which makes a *block-level* child of an inline
+ * box. CSS then splits the inline box around it, and the border and padding are
+ * drawn once per fragment: two thin vertical slivers stacked above and below
+ * the content, looking for all the world like a broken scrollbar.
+ *
+ * Being a flex container itself means an icon and a label just work, and there
+ * is nothing to nest.
+ */
 export function Tag({
   children,
   tone = "neutral",
@@ -74,7 +52,7 @@ export function Tag({
 }) {
   return (
     <span
-      className={`rounded-chip border px-2 py-1 text-xs uppercase tracking-wide ${TONES[tone]}`}
+      className={`inline-flex items-center gap-1.5 rounded-chip border px-2 py-1 text-xs uppercase tracking-wide ${TONES[tone]}`}
     >
       {children}
     </span>
