@@ -17,17 +17,18 @@
  * Key names come from the data table at https://ttycoon.eu/userapps/docs.
  */
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { getData, onGameData, type GameData } from "./userapp";
 
-/** What the settings page and the shelf need to know about who is playing. */
+/** Who is playing, as much of it as any app has been found to need. */
 export type Player = {
   /** Character name, as the server displays it. */
   name: string | null;
   /**
    * vRP `user_id` — the account behind the character, stable across reconnects
-   * and renames. This is the key ttGamba stores chips against.
+   * and renames. This is the key an app should store anything per-player
+   * against; a name and a session id both move.
    */
   vrpId: number | null;
   /** Faction, if they are in one. */
@@ -39,7 +40,10 @@ export type Player = {
   steamId: string | null;
   /** Source ID to show the players current session */
   sourceId: string | null;
-  /** In-game cash on hand, in dollars. Not chips — see PRODUCT.md. */
+  /**
+   * In-game cash on hand, in dollars. Read-only: the protocol has no command
+   * that moves it, so an app can report this figure and nothing more.
+   */
   wallet: number | null;
   /** In-game bank balance, in dollars. */
   bank: number | null;
@@ -72,6 +76,32 @@ export type Connection = "waiting" | "connected" | "absent";
 type State = { connection: Connection; player: Player };
 
 /**
+ * The cache itself, unread and untyped — everything the client has sent us this
+ * session, whether or not this module knows what it means.
+ *
+ * `Player` above is this package's answer to "who is playing", and it is
+ * deliberately eight fields out of the ~90 keys the docs list. This is the other
+ * view: the raw pairs, for a panel that exists to show what the client is
+ * actually saying. Nothing that renders a *feature* should read it — a feature
+ * that wants a key should add it to `Player`, where it gets a name and a type,
+ * rather than reaching into a bag of strings.
+ */
+export type GameDataSnapshot = {
+  /** Current value per key, folded from every patch so far. */
+  data: GameData;
+  /**
+   * When each key last *changed*, epoch milliseconds.
+   *
+   * Not when it last arrived. `getData` re-sends the whole cache, so stamping
+   * on arrival would light up every row on every refresh and the one key that
+   * actually moved would be invisible in the noise.
+   */
+  changedAt: Record<string, number>;
+  /** When the last message landed at all, or `null` if none has. */
+  at: number | null;
+};
+
+/**
  * How long the client gets to answer `getData` before we call it: a local
  * `postMessage` round trip, so in practice this is decided in a frame or two.
  * The generosity is all downside-weighted — an extra second of blank frame
@@ -82,10 +112,41 @@ const CLIENT_TIMEOUT = 2000;
 
 /** Referentially stable — `useSyncExternalStore` compares snapshots by identity. */
 const INITIAL: State = { connection: "waiting", player: NO_PLAYER };
+/** Same, for the raw view. */
+const NO_DATA: GameDataSnapshot = { data: {}, changedAt: {}, at: null };
+const NO_TRIGGERS: Readonly<Record<string, number>> = {};
+
+/** Every trigger key carries it — `trigger_triangle`, `trigger_accept`. */
+const TRIGGER_PREFIX = "trigger_";
 
 let state: State = INITIAL;
 /** The accumulated cache. Patches are folded in here, then read as a `Player`. */
 let cache: GameData = {};
+let changedAt: Record<string, number> = {};
+/**
+ * The raw view, rebuilt on every message.
+ *
+ * A fresh identity each time on purpose, `at` included: "nothing has changed
+ * but the client is still talking" is exactly what a live panel needs to be
+ * able to say, and it cannot say it from a snapshot that only moves when a
+ * value does.
+ */
+let raw: GameDataSnapshot = NO_DATA;
+/**
+ * When each trigger last fired, by name with the prefix taken off.
+ *
+ * ── Why this is not simply read out of `raw` ──────────────────────────────
+ * `raw` gains a new identity on every message, and in game the messages never
+ * stop: position and camera keys alone move several times a second. Anything
+ * subscribed to it re-renders at that rate, which is right for a panel whose
+ * job is to show the stream and very wrong for the window frame — the root of
+ * the whole app — which only wants to know that a key was pressed.
+ *
+ * So a narrow reading gets a narrow snapshot. This one changes identity when a
+ * keybind fires and not otherwise, which is a handful of times a session.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+let triggers: Readonly<Record<string, number>> = NO_TRIGGERS;
 let hydrated = false;
 const listeners = new Set<() => void>();
 
@@ -164,11 +225,13 @@ function read(): Player {
   };
 }
 
-/** Cheap enough to run on every patch, and it keeps the snapshot stable. */
+/**
+ * Cheap enough to run on every patch, and it keeps the snapshot stable — a
+ * player who has not moved keeps their identity, and nothing subscribed to it
+ * re-renders.
+ */
 function changed(next: Player, previous: Player): boolean {
-  return (Object.keys(next) as (keyof Player)[]).some(
-    (key) => next[key] !== previous[key],
-  );
+  return (Object.keys(next) as (keyof Player)[]).some((key) => next[key] !== previous[key]);
 }
 
 function emit() {
@@ -187,21 +250,58 @@ function hydrate() {
   }, CLIENT_TIMEOUT);
 
   onGameData((data) => {
-    cache = { ...cache, ...data };
+    const now = Date.now();
+
+    // Folded key by key rather than spread wholesale, so a key that arrived
+    // carrying the value it already had is not counted as a change. See
+    // `changedAt`.
+    const next = { ...cache };
+    const stamps = { ...changedAt };
+    let moved = false;
+    /** Rebuilt only if a keybind actually fired, so the snapshot holds still. */
+    let fired: Record<string, number> | null = null;
+
+    for (const [key, value] of Object.entries(data)) {
+      if (key in next && next[key] === value) continue;
+      next[key] = value;
+      stamps[key] = now;
+      moved = true;
+
+      // A trigger is the one thing in this stream that *happens* rather than
+      // *is*: the value is the client's timer, so a second press of the same key
+      // is a different number and lands here as a change. Which is exactly what
+      // makes a press detectable at all.
+      if (key.startsWith(TRIGGER_PREFIX)) {
+        fired ??= { ...triggers };
+        fired[key.slice(TRIGGER_PREFIX.length)] = now;
+      }
+    }
+
+    if (moved) {
+      cache = next;
+      changedAt = stamps;
+    }
+    if (fired) triggers = fired;
+
+    raw = { data: cache, changedAt, at: now };
 
     // Deliberately not one-way. A client that answers late — or answers a
     // `getData` sent by the refresh button — is a client that is there, so
     // `absent` is a current best guess rather than a verdict.
     clearTimeout(giveUp);
 
-    const player = read();
     // Every message proves a client is there, even one carrying keys this
     // module does not read — so the connection can settle without the player
     // themself changing at all.
+    const player = read();
     if (state.connection !== "connected" || changed(player, state.player)) {
       state = { connection: "connected", player };
-      emit();
     }
+
+    // Unconditional, because `raw` has moved even when nothing else has. The
+    // `state` snapshot above keeps its identity when the player is unchanged,
+    // so `usePlayer` consumers bail out of this without re-rendering.
+    emit();
   });
 
   // The client volunteers changes only, so without this an app opened
@@ -230,3 +330,69 @@ export function usePlayer(): State {
     () => INITIAL,
   );
 }
+
+/**
+ * The cache as it stands, keys and all.
+ *
+ * For the admin panel and nothing else — see `GameDataSnapshot`. It shares the
+ * subscription with `usePlayer`, so opening the panel starts no second listener
+ * and asks the client for nothing it was not already being sent.
+ */
+export function useGameData(): GameDataSnapshot {
+  return useSyncExternalStore(
+    subscribe,
+    () => raw,
+    () => NO_DATA,
+  );
+}
+
+/**
+ * Run something when the player presses one of the game's bindable keys.
+ *
+ * Triggers arrive as ordinary data — key `trigger_[name]`, value the client's
+ * timer in milliseconds — so a *press* is a value that changed rather than a
+ * message of its own. That is what this watches. The four built-in binds are
+ * `square`, `triangle`, `circle` and `cross`; anything else has to be
+ * registered first with `registerTrigger` (./userapp.ts).
+ *
+ * Two things follow from triggers being data, and both are handled here:
+ *
+ * - **The first sighting is not a press.** The store may already be holding a
+ *   trigger from before this mounted, and firing on it would mean a key pressed
+ *   ten minutes ago acts the moment a component appears.
+ * - **The key is never cached** (the docs are explicit), so it cannot be asked
+ *   for with `getData` and will not reappear after a refresh. Nothing here
+ *   needs to allow for that; it just means the value only ever moves forwards.
+ *
+ * `onFire` is read through a ref, so a handler written inline at the call site
+ * does not re-arm the watch on every render.
+ */
+export function useTrigger(name: string, onFire: () => void): void {
+  const fired = useSyncExternalStore(
+    subscribe,
+    () => triggers,
+    () => NO_TRIGGERS,
+  );
+
+  const handler = useRef(onFire);
+  /** The press already acted on. `null` until the first sighting. */
+  const seen = useRef<number | null>(null);
+
+  useEffect(() => {
+    handler.current = onFire;
+  }, [onFire]);
+
+  useEffect(() => {
+    const at = fired[name];
+    if (at === undefined) return;
+
+    if (seen.current === null || at === seen.current) {
+      seen.current = at;
+      return;
+    }
+
+    seen.current = at;
+    handler.current();
+  }, [fired, name]);
+}
+

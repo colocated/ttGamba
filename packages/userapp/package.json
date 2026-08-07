@@ -1,0 +1,28 @@
+{
+  "name": "@tt/userapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "//": "Source is published, not build output — apps list this in transpilePackages and Next compiles it with their own. No build step, no watch mode, no stale dist.",
+  "exports": {
+    ".": "./src/userapp.ts",
+    "./gamedata": "./src/gamedata.ts",
+    "./gamekeys": "./src/gamekeys.ts",
+    "./settings": "./src/settings.ts"
+  },
+  "scripts": {
+    "lint": "eslint src"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  },
+  "//devDependencies": "next and eslint-config-next are here for the lint config only — this package imports neither. Same rules as the apps, so a problem is found where it was written.",
+  "devDependencies": {
+    "@types/react": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "typescript": "^5"
+  }
+}

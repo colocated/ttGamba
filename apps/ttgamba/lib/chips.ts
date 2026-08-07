@@ -31,7 +31,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { getAccount, type Account } from "./account";
-import { usePlayer } from "./gamedata";
+import { usePlayer } from "@tt/userapp/gamedata";
 import type { Role } from "./generated/prisma/enums";
 
 /**
@@ -48,7 +48,7 @@ export type ChipState = {
   /**
    * The player's role. Only ever the server's answer — a cached role would be
    * a guess about what someone is allowed to do, and the settings page would
-   * rather say nothing (see components/account.tsx).
+   * rather say nothing (see components/settings/identifiers.tsx).
    */
   role: Role | null;
   /**

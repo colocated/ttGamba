@@ -2,7 +2,7 @@
  * Transport Tycoon user app bridge.
  *
  * A user app runs in an iframe over the game client, and the only way to talk
- * to the client is to post a message at the parent frame. See README.md.
+ * to the client is to post a message at the parent frame.
  *
  * The action list mirrors the command table at https://ttycoon.eu/userapps/docs
  * (readme.md, updated April 16th 2025).
@@ -77,17 +77,29 @@ export type BlipOptions = {
 /**
  * The curated sound effects the client will play, keyed by the names the docs
  * use. Indexes are the game's, not ours — do not renumber.
+ *
+ * ── Why the casing is a mess, and stays a mess ────────────────────────────
+ * `Bed`, `ScreenFlash`, `On_Call_Player_Join` and `Out_Of_Bounds_Timer` break
+ * the pattern the other thirteen follow, and they are copied that way on
+ * purpose. These are not names this project chose: they are GTA's own audio
+ * references, transcribed by the docs, and the only thing anyone does with one
+ * is paste it into a search somewhere else. Tidied into SCREAMING_SNAKE they
+ * stop matching what they name, and the table stops being a copy of anything.
+ *
+ * Verified against <https://ttycoon.eu/userapps/docs> (readme.md, updated
+ * April 16th 2025) on 6 August 2026: 17 effects, indexes 1–17, unchanged.
+ * ─────────────────────────────────────────────────────────────────────────
  */
 export const SFX = {
   CHECKPOINT_MISSED: 1,
   FLIGHT_SCHOOL_LESSON_PASSED: 2,
   TIMER_STOP: 3,
-  BED: 4,
+  Bed: 4,
   MEDAL_UP: 5,
   CHALLENGE_UNLOCKED: 6,
-  SCREEN_FLASH: 7,
-  ON_CALL_PLAYER_JOIN: 8,
-  OUT_OF_BOUNDS_TIMER: 9,
+  ScreenFlash: 7,
+  On_Call_Player_Join: 8,
+  Out_Of_Bounds_Timer: 9,
   ROUND_ENDING_STINGER_CUSTOM: 10,
   DELETE: 11,
   OTHER_TEXT: 12,

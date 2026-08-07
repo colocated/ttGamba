@@ -27,7 +27,7 @@ import { usePathname } from "next/navigation";
 
 import { refreshChips, revalidateAccount, useChips } from "./chips";
 import type { Caller, Failure, Outcome, Page, Role } from "./desk";
-import { usePlayer } from "./gamedata";
+import { usePlayer } from "@tt/userapp/gamedata";
 
 /**
  * How stale the role is allowed to get while someone is clicking around.
