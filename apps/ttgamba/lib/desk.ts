@@ -168,6 +168,13 @@ export type Tone = "neutral" | "good" | "settled" | "bad" | "muted";
 
 // ── Roles ──────────────────────────────────────────────────────────────────
 
+/**
+ * Every role there is, most privileged first — which is the order they are
+ * offered in, so the list a person reads matches the ladder they are moving
+ * someone up or down.
+ */
+export const ROLES: readonly Role[] = ["superadmin", "banker", "player"];
+
 /** How a role reads to a person, who has never heard the word `superadmin`. */
 export const ROLE_LABELS: Record<Role, string> = {
   superadmin: "Administrator",
@@ -324,6 +331,16 @@ export const AUDIT_ACTIONS = {
     blurb: "Someone was made — or unmade — a banker.",
     flow: null as Flow,
   },
+  "cache.flushed": {
+    label: "Cache cleared",
+    blurb: "An administrator threw away the app's cached rows.",
+    flow: null as Flow,
+  },
+  "catalogue.saved": {
+    label: "Games changed",
+    blurb: "An administrator edited the games, their order, or their table limits.",
+    flow: null as Flow,
+  },
   "balance.credited": {
     label: "Balance credited",
     blurb: "Chips added by hand, outside a request.",
@@ -415,13 +432,77 @@ export type AuditAction = keyof typeof AUDIT_ACTIONS;
 export const AUDIT_ACTION_KEYS = Object.keys(AUDIT_ACTIONS) as AuditAction[];
 
 /**
+ * What an action *did*, as three shapes rather than seventeen labels.
+ *
+ * Keyed on the verb — the half after the dot — because the verb is the part
+ * that carries the meaning: `deposit.denied` and `withdrawal.denied` are the
+ * same shape of event happening to different things, and a table keyed on whole
+ * action names would say so twice and then disagree with itself the first time
+ * somebody added a third.
+ *
+ * The three read as colours in a log that is mostly scanned rather than read:
+ * something came into being, something changed, something was taken away.
+ */
+const VERB_SHAPES: Record<string, ActionShape> = {
+  created: "create",
+  requested: "create",
+  credited: "create",
+  payout: "create",
+  refund: "create",
+
+  changed: "modify",
+  saved: "modify",
+  approved: "modify",
+  actioned: "modify",
+  bet: "modify",
+
+  cancelled: "destroy",
+  denied: "destroy",
+  debited: "destroy",
+  flushed: "destroy",
+};
+
+export type ActionShape = "create" | "modify" | "destroy";
+
+/**
+ * Actions only an administrator can cause.
+ *
+ * Worth marking in a log a *banker* also reads: everything else in there is the
+ * ordinary business of the desk, and these are the entries that say somebody
+ * reached past it. Not a permission — the server decides that (lib/auth.ts) —
+ * only a way of making the unusual rows look unusual.
+ */
+const ADMIN_ACTIONS = new Set<string>(["role.changed", "cache.flushed", "catalogue.saved"]);
+
+/**
  * How an action reads. Falls back to the raw key, because a log that hides
  * rows it does not recognise is worse than useless — it is quietly wrong.
  */
-export function describeAction(action: string): { label: string; known: boolean } {
+export function describeAction(action: string): {
+  label: string;
+  known: boolean;
+  shape: ActionShape;
+  admin: boolean;
+} {
   const known = AUDIT_ACTIONS[action as AuditAction];
-  return known ? { label: known.label, known: true } : { label: action, known: false };
+  const verb = action.slice(action.indexOf(".") + 1);
+
+  return {
+    label: known ? known.label : action,
+    known: Boolean(known),
+    // An unrecognised verb is "something changed", which is the shape that
+    // claims least about an event this build has never heard of.
+    shape: VERB_SHAPES[verb] ?? "modify",
+    admin: ADMIN_ACTIONS.has(action),
+  };
 }
+
+/** How each shape reads as colour. Border, tint and text, as `TONES`. */
+export const SHAPE_TONES: Record<ActionShape, Tone> = {
+  create: "good",
+  modify: "settled",
+  destroy: "bad",
+};
 
 /** Which way an action moved the total, if it moved it at all. */
 export function flowOf(action: string): Flow {

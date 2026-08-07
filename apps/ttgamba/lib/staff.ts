@@ -45,6 +45,11 @@ export type Desk = {
   /** Whether the panel should be reachable at all. */
   staff: boolean;
   /**
+   * Whether the admin tools should be reachable. A narrower door than `staff`:
+   * a banker works the queue, an administrator works on the app itself.
+   */
+  admin: boolean;
+  /**
    * The role has been answered at least once. Before this, `staff: false` means
    * "we have not asked yet" rather than "no" — which is why the panel renders
    * nothing rather than a refusal while it is false.
@@ -79,6 +84,7 @@ export function useStaff(): Desk {
     caller,
     role,
     staff: role === "banker" || role === "superadmin",
+    admin: role === "superadmin",
     ready: role !== null,
   };
 }
