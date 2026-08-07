@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    // env.mjs and migrate.mjs are plain JavaScript carrying JSDoc types, so the
+    // deployer runs under bare node. This is what lets client.ts import them and
+    // still get types out.
+    "allowJs": true
+  },
+  "include": ["src/**/*", "bin/**/*"],
+  "exclude": ["node_modules"]
+}

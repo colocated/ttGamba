@@ -1,70 +1,68 @@
 import "server-only";
 
 /**
- * The database handle.
+ * ttGamba's database handle.
  *
- * Turso is libSQL, which is SQLite, so one client covers both ends: the same
- * `@libsql/client` reads a `file:` database in development and speaks the
- * remote protocol to Turso in production. Nothing here branches on which — the
- * URL decides.
+ * The plumbing — URL and token resolution, the libSQL adapter, one client per
+ * process, the Redis cache extension — is `@tt/db`. What stays here is what
+ * cannot be shared: `PrismaClient` is generated from this app's schema, so
+ * `prisma` below is typed against this app's models alone.
  *
- * Prisma 7 has no query engine binary to talk to a database on its own; a
- * driver adapter is how it gets one. That is why this file exists rather than
- * a bare `new PrismaClient()`.
- *
- * See DEPLOYMENT.md for where these variables come from and how the schema
- * reaches Turso, which is not `prisma migrate deploy`.
+ * See DEPLOYMENT.md for where the variables come from, and how the schema
+ * reaches Turso (which is not `prisma migrate deploy`).
  */
 
-import type { Config } from "@libsql/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { createPrismaSingleton, libsqlAdapter } from "@tt/db";
+import { redisCache } from "@tt/db/cache";
 
 import { PrismaClient } from "./generated/prisma/client";
+import { CACHE_PREFIX } from "./keys";
 
 /**
- * Two names for the same slot, and the split is deliberate.
+ * What is cached, and — the load-bearing part — what is not.
  *
- * `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` are Turso's own names — what their
- * docs use, what `turso` CLI examples assume, and what their Vercel and
- * Netlify integrations inject into a deployment without being asked. Taking
- * them as-is means production is configured by connecting the integration and
- * nothing else.
+ * Caching is opt-in per model:
  *
- * `DATABASE_URL` stays the development fallback because it is the one the
- * Prisma CLI reads (see prisma.config.ts). Migrations are authored against the
- * local file, so the CLI's variable and the dev database's variable want to be
- * the same one — while production, which the CLI cannot reach at all, is
- * described entirely by Turso's pair.
+ * | Model | Cached | Why |
+ * | --- | --- | --- |
+ * | `Game`, `Tier` | yes, 300s | Read on every app load, written only by the admin panel. |
+ * | `User` | yes, 60s | Identity and role. Read on every navigation and every desk call; written only by `setRole`. |
+ * | `Balance` | **never** | Chips. Moves on every settled request and every payout. |
+ * | `Request` | **never** | The banker queue: money mid-flight, with held chips riding on its status. |
+ * | `Table`, `TableSeat`, `Shoe` | **never** | Live game state, swept by a poll (lib/tables.ts). |
+ * | `AuditEvent` | **never** | Append-only, and read exactly when a stale answer is least welcome. |
+ *
+ * Adding a model: cache what an administrator edits, never what a player's
+ * money depends on.
+ *
+ * ── Two things `User` caching rests on ────────────────────────────────────
+ * **A role is only ever written through Prisma.** `setRole` (lib/banker.ts) is
+ * the one path, and going through the client is what purges the cached row on
+ * the spot. Editing a role directly in `pnpm db:studio` bypasses that — the
+ * change is real but invisible for up to the TTL below, which is why the panel
+ * exists and why the TTL is a minute rather than an hour.
+ *
+ * **A `User` is never read with its balance included.** `include: { balance }`
+ * would put chips inside a cached row, where none of the invalidation that
+ * protects `Balance` applies — the extension does not see writes through a
+ * relation. Read them as two queries; lib/account.ts is the example.
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Writes purge what they touch, so the admin panel sees its own save
+ * immediately. With no `REDIS_URL` this is inert and development needs no Redis.
  */
-function config(): Config {
-  // `||`, not `??`. A variable left blank in a `.env` file is an empty string
-  // rather than absent, and `.env.example` ships exactly that — so `??` would
-  // read the blank as a deliberate choice and refuse to fall back.
-  const url = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error(
-      "No database URL. Set TURSO_DATABASE_URL in production, or copy " +
-        ".env.example to .env for local development.",
-    );
-  }
+const cache = redisCache({
+  prefix: CACHE_PREFIX,
+  models: [
+    { model: "Game", ttl: 300 },
+    { model: "Tier", ttl: 300 },
+    // Shorter than the catalogue: a stale role is a permission, and a minute is
+    // the longest anyone should have to wait for a revocation made outside the
+    // panel to take effect. The admin cache flush is the way to cut it short.
+    { model: "User", ttl: 60 },
+  ],
+});
 
-  // Harmless against a `file:` URL, which ignores it, so this needs no guard
-  // for which end it is talking to. Absent for a local `turso dev` server too.
-  const authToken = process.env.TURSO_AUTH_TOKEN;
-  return authToken ? { url, authToken } : { url };
-}
-
-/**
- * One client per process, kept on `globalThis` because dev's hot reload
- * re-evaluates this module on every change. A fresh client each time would
- * leak a connection pool per edit until the libSQL server refused any more —
- * which presents as the app working for ten minutes and then not.
- */
-const globalForPrisma = globalThis as typeof globalThis & {
-  prisma?: PrismaClient;
-};
-
-export const prisma =
-  globalForPrisma.prisma ?? new PrismaClient({ adapter: new PrismaLibSql(config()) });
-
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+export const prisma = createPrismaSingleton(() =>
+  new PrismaClient({ adapter: libsqlAdapter() }).$extends(cache),
+);

@@ -62,8 +62,10 @@ Run it **before** the new build starts serving, so the schema is never behind
 the code reading it. It is safe to run when nothing has changed — it reports
 `No pending migrations` and exits.
 
-`db:deploy` runs `prisma/deploy-turso.mjs`, which is a stand-in for
-`prisma migrate deploy` rather than an alternative to it: same `migration.sql`
+`db:deploy` runs `tt-db-deploy`, which is
+[`@tt/db`](../../packages/db)'s migration deployer — shared with every app in
+the workspace, because none of it is specific to this schema. It is a stand-in
+for `prisma migrate deploy` rather than an alternative to it: same `migration.sql`
 files, same order, same `_prisma_migrations` bookkeeping, same sha256
 checksums. A database deployed this way is one `prisma migrate status`
 recognises. It also:
