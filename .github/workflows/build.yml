@@ -1,0 +1,106 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # Which apps does this push actually touch? An edit under packages/ counts as
+  # touching all of them, because that is exactly what it does.
+  #
+  # Adding an app is two edits: a filter here, and its own Dockerfile.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.filter.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ttgamba:
+              - 'apps/ttgamba/**'
+              - 'packages/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - '.github/workflows/build.yml'
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.apps != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      # One app failing should not cancel the others — they deploy separately,
+      # so they may as well fail separately.
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Lint before building the image. A type error found in a Docker layer is
+      # the same error found four minutes later.
+      - name: Lint
+        run: pnpm --recursive lint
+
+      - name: Log in to GHCR
+        # Nothing to push from a pull request, and a fork has no credentials to
+        # push with. Build still runs — it is the part that catches breakage.
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # One GHCR package per app, so visibility, retention and rollbacks are
+          # set per app rather than shared across every app in the repo.
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.app }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=ref,event=pr
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # The repository root, not the app directory — the build needs the
+          # lockfile, the workspace file and packages/.
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}

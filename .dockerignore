@@ -1,0 +1,37 @@
+# The build context is the repository root — see any app's Dockerfile.
+#
+# .git is excluded deliberately: including it to read one commit SHA would bust
+# the context hash on every commit and defeat layer caching. The Dockerfile takes
+# the SHA as a build arg instead.
+.git
+.github
+
+node_modules
+**/node_modules
+
+.next
+**/.next
+out
+**/out
+build
+**/build
+.turbo
+**/.turbo
+
+# Local dev databases. The container reads Turso.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Never bake secrets into an image layer. The example carries none and is not
+# read at build time either, so neither goes in.
+.env
+.env.*
+
+*.tsbuildinfo
+**/*.tsbuildinfo
+.DS_Store
+*.pem
+Dockerfile
+.dockerignore
