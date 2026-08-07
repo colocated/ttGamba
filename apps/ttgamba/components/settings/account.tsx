@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * The settings page's account view.
+ * The settings page's front tab: who the player is, what they are holding, and
+ * what they have asked a banker for.
  *
  * Two sources meet here and they arrive at different times and can each fail
  * on their own: the game client, which knows who the player is, and the
@@ -13,9 +14,14 @@
  *
  * It is also where chips cross the in-game boundary, because the balance is
  * where a player looks for that. The form and the list of what they have asked
- * for are in components/requests.tsx; this owns the query behind the list, so
- * that making a request and cancelling one both have somewhere to say the
- * page has moved on.
+ * for are in components/settings/requests.tsx; this owns the query behind the
+ * list, so that making a request and cancelling one both have somewhere to say
+ * the page has moved on.
+ *
+ * The account's own particulars — the ids it is keyed on, and the role it
+ * carries — are a tab along, in components/settings/identifiers.tsx. Those are
+ * looked up once, when something has gone wrong, and had no business sitting
+ * between a balance and the button that changes it.
  *
  * Nothing here handles the game client being absent entirely. The tablet does
  * not render any page until it is connected, so by the time this mounts there
@@ -27,23 +33,24 @@ import { useState } from "react";
 import { PokerChipIcon } from "@phosphor-icons/react/dist/csr/PokerChip";
 
 import { Problem, Skeleton } from "@/components/banker/ui";
+import { Count } from "@/components/stage";
 import { refreshChips, useChips } from "@/lib/chips";
-// How a role reads to a player, who has never heard the word `superadmin`.
-// Shared with the banker desk, which labels the same three roles.
-import { ROLE_LABELS, ROLE_TONES, type RequestKind } from "@/lib/desk";
+import { STATUSES, type RequestKind } from "@/lib/desk";
 import { formatChips, formatMoney } from "@/lib/format";
-import { usePlayer } from "@/lib/gamedata";
+import { usePlayer } from "@tt/userapp/gamedata";
 import { getMyRequests } from "@/lib/requests";
 import { usePlayerCall } from "@/lib/staff";
-import { Odometer } from "./odometer";
+import { Odometer } from "@tt/window";
+import { Drawer, Field, Fields, Pending, Section } from "./fields";
 import { RequestForm, RequestList } from "./requests";
-import { Panel, Tag } from "./stage";
 
 export function Account() {
   const { player } = usePlayer();
-  const { chips, role, failed } = useChips();
+  const { chips, failed } = useChips();
   /** Which request is being composed, if any. The modal is either or neither. */
   const [asking, setAsking] = useState<RequestKind | null>(null);
+  /** The requests drawer. Shut on arrival — see the `Drawer` below. */
+  const [showRequests, setShowRequests] = useState(false);
   const requests = usePlayerCall(getMyRequests);
 
   /**
@@ -52,6 +59,13 @@ export function Account() {
    * asked for — so the figure in the titlebar is re-read rather than guessed
    * at from here (lib/chips.ts).
    *
+   * The drawer is opened along with it. A withdrawal takes the chips the moment
+   * it is asked for, and the balance in the titlebar drops to match; the reason
+   * that does not read as the app losing someone's money is that the request is
+   * sitting on screen underneath it, saying where they went. That argument is
+   * the whole shape of components/settings/requests.tsx, and a drawer that
+   * stayed shut over the answer would quietly undo it.
+   *
    * Deliberately not also closing the modal. The form dismisses itself, which
    * is what lets it animate out; unmounting it from here the moment the data
    * changed would cut that short (components/overlay.tsx).
@@ -59,7 +73,15 @@ export function Account() {
   const changed = () => {
     requests.reload();
     refreshChips();
+    setShowRequests(true);
   };
+
+  /*
+    What is still in a banker's hands. Settled requests are history and stay
+    behind the drawer; these are the ones the player is waiting on, and the only
+    reason the closed section has to ask for attention.
+  */
+  const waiting = requests.data?.filter((row) => STATUSES[row.status].open).length ?? 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -78,7 +100,18 @@ export function Account() {
         </div>
       </Section>
 
-      <Section title="Requests">
+      {/*
+        Shut by default. It is the longest thing on the tab and the least often
+        wanted — a player who has nothing outstanding has no reason to read a
+        list of requests that already settled, and one who does is told so by
+        the header without opening it.
+      */}
+      <Drawer
+        title="Requests"
+        aside={<RequestsAside waiting={waiting} failed={requests.failure !== null} />}
+        open={showRequests}
+        onToggle={() => setShowRequests((was) => !was)}
+      >
         {requests.failure ? (
           <Problem failure={requests.failure} onRetry={requests.reload} />
         ) : null}
@@ -87,23 +120,7 @@ export function Account() {
         ) : requests.loading ? (
           <Skeleton rows={2} />
         ) : null}
-      </Section>
-
-      <Section title="Identity">
-        <Fields>
-          <Field label="vRP ID" value={player.vrpId} mono />
-          <Field label="Discord ID" value={player.discordId} mono />
-          <Field label="Steam ID" value={player.steamId} mono />
-          <Field label="Source ID" value={player.sourceId} mono />
-          <Field
-            label="Role"
-            // The role is the database's answer, so it is blank until that
-            // lands — showing "Player" while it loads would be a guess that
-            // happens to be right most of the time, which is the worst kind.
-            value={role ? <Tag tone={ROLE_TONES[role]}>{ROLE_LABELS[role]}</Tag> : null}
-          />
-        </Fields>
-      </Section>
+      </Drawer>
 
       {asking === null ? null : (
         <RequestForm
@@ -116,6 +133,25 @@ export function Account() {
       )}
     </div>
   );
+}
+
+/**
+ * What the requests header says with the drawer shut.
+ *
+ * A closed section is only honest if it can tell the player when there is
+ * something inside worth opening, and there are two of those: requests a banker
+ * has not dealt with yet, and the list having failed to load at all. The second
+ * matters more than it looks — the retry is behind the drawer, so a failure
+ * that said nothing here would be a section that is simply empty forever.
+ *
+ * Nothing at all when there is neither. A header that always carries a badge is
+ * a header nobody reads.
+ */
+function RequestsAside({ waiting, failed }: { waiting: number; failed: boolean }) {
+  if (failed) return <span className="text-xs font-normal text-loss">Unavailable</span>;
+  if (waiting === 0) return null;
+
+  return <Count value={waiting} title={`${waiting} still open`} />;
 }
 
 /**
@@ -202,59 +238,6 @@ function Money({ label, amount }: { label: string; amount: number | null }) {
         {amount === null ? <Pending /> : formatMoney(amount)}
       </span>
     </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <Panel className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium">{title}</h2>
-      {children}
-    </Panel>
-  );
-}
-
-/** `Field` is a `dt`/`dd` pair, so it needs a description list around it. */
-function Fields({ children }: { children: React.ReactNode }) {
-  return <dl className="flex flex-col gap-3">{children}</dl>;
-}
-
-/**
- * One labelled value. `null` is not an error — most of these are unknown until
- * the client reports them, and some stay unknown forever (a player in no
- * faction, an account with no Discord linked).
- */
-function Field({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: React.ReactNode;
-  mono?: boolean;
-}) {
-  const empty = value === null || value === undefined || value === "";
-
-  return (
-    <div className="flex items-center justify-between gap-4 border-b border-edge/50 pb-3 last:border-0 last:pb-0">
-      <dt className="text-sm text-ink-soft">{label}</dt>
-      <dd className={`min-w-0 truncate text-sm ${mono ? "font-mono tabular-nums" : ""}`}>
-        {empty ? <Pending /> : value}
-      </dd>
-    </div>
-  );
-}
-
-/**
- * A value that is not there yet, or not there at all. One glyph for both,
- * because the page cannot tell them apart and inventing a spinner for the
- * first would make the second look broken.
- */
-function Pending({ wide }: { wide?: boolean }) {
-  return (
-    <span className={`text-ink-muted ${wide ? "text-base" : ""}`} aria-label="Unknown">
-      —
-    </span>
   );
 }
 
