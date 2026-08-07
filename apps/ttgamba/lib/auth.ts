@@ -55,6 +55,12 @@ export const STAFF: readonly Role[] = ["superadmin", "banker"];
  */
 export const ANYONE: readonly Role[] = ["superadmin", "banker", "player"];
 
+/**
+ * Whoever maintains the app. A narrower door than `STAFF`: a banker works the
+ * queue, an administrator arranges the floor itself (lib/catalogue.ts).
+ */
+export const ADMIN: readonly Role[] = ["superadmin"];
+
 export const FORBIDDEN: Failure = {
   ok: false,
   reason: "forbidden",
@@ -134,4 +140,31 @@ export function readName(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().slice(0, 100);
   return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * A short piece of text with a length of its own, or `null` for nothing worth
+ * storing. For the fields an administrator types — a game's name, its icon, the
+ * id of its engine — where the cap is the field's rather than a person's.
+ *
+ * Trimmed and truncated rather than refused. A name with a trailing space is a
+ * typo, not an attack, and refusing the save over it would be the panel being
+ * difficult about something it can simply fix.
+ */
+export function readText(value: unknown, limit: number): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().slice(0, limit);
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * A whole number inside a range, or `null`.
+ *
+ * Seats at a table, tables on the floor — counts, where a fraction or a
+ * negative is a payload that did not come from the panel.
+ */
+export function readWhole(value: unknown, min: number, max: number): number | null {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) return null;
+  if (value < min || value > max) return null;
+  return value;
 }

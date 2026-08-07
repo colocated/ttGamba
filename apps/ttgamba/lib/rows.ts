@@ -26,8 +26,9 @@ import "server-only";
  * ─────────────────────────────────────────────────────────────────────────
  */
 
+import type { GameRow, SeatRow, TableRow, TierRow } from "./casino";
 import type { AuditRow, RequestRow } from "./desk";
-import type { AuditEvent, Request } from "./generated/prisma/client";
+import type { AuditEvent, Game, Request, Table, TableSeat, Tier } from "./generated/prisma/client";
 
 /** A stored chip figure, as the rest of the app counts. */
 export function toChips(value: bigint): number {
@@ -83,6 +84,65 @@ export function toRequestRow(row: Request): RequestRow {
     handledAt: row.handledAt ? row.handledAt.getTime() : null,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
+  };
+}
+
+export function toGameRow(row: Game): GameRow {
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    blurb: row.blurb,
+    icon: row.icon,
+    engine: row.engine,
+    inRail: row.inRail,
+    position: row.position,
+  };
+}
+
+export function toTierRow(row: Tier): TierRow {
+  return {
+    id: row.id,
+    gameId: row.gameId,
+    name: row.name,
+    minBet: toChips(row.minBet),
+    maxBet: toChips(row.maxBet),
+    seats: row.seats,
+    floor: row.floor,
+    position: row.position,
+  };
+}
+
+export function toSeatRow(row: TableSeat): SeatRow {
+  return {
+    position: row.position,
+    vrpId: row.vrpId,
+    playerName: row.playerName,
+    joinedAt: row.joinedAt.getTime(),
+  };
+}
+
+/**
+ * A table, and deliberately not everything on the row.
+ *
+ * `state` — the engine's own JSON — is left off, because it is the round in
+ * progress and half of what is in it is other people's hands. An engine that
+ * needs to put something on screen gets it from a call of its own that decides
+ * what this player is allowed to see. Same reasoning as the shoe, which is why
+ * `cardsLeft` arrives here as a count rather than as anything to do with cards.
+ */
+export function toTableRow(
+  row: Table & { seats: TableSeat[] },
+  cardsLeft: number | null,
+): TableRow {
+  return {
+    id: row.id,
+    tierId: row.tierId,
+    number: row.number,
+    overflow: row.overflow,
+    ownerVrpId: row.ownerVrpId,
+    seats: row.seats.map(toSeatRow).sort((a, b) => a.position - b.position),
+    cardsLeft,
   };
 }
 

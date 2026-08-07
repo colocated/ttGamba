@@ -34,6 +34,24 @@ export function formatChipCount(amount: number): string {
 }
 
 /**
+ * The same figure at a glance — `10B`, `1.5M`, `750`.
+ *
+ * For places where the number is being *scanned* rather than checked, and where
+ * spelling it out in full would run past the edge of what it is written on — a
+ * lobby card's bet limits, which are two figures side by side inside a box a
+ * couple of hundred pixels wide.
+ *
+ * It rounds, so it is never the last word on an amount: anywhere this is used,
+ * the exact figure has to be reachable — a `title` beside it, or the table
+ * itself once the player has sat down.
+ */
+const SHORT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+
+export function formatChipsShort(amount: number): string {
+  return SHORT.format(Math.trunc(amount));
+}
+
+/**
  * The same figure in words — `10 billion`, `1.5 million`, `750`.
  *
  * For reading back an amount someone has just typed. Thirteen digits is past

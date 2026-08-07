@@ -4,7 +4,8 @@
 // and the schema engine talks the same dialect. What Turso is not is reachable
 // by that engine: it only speaks `file:`, so `libsql://` URLs are rejected
 // outright. Migrations are therefore authored here against the local dev file
-// and shipped to Turso as SQL. See lib/db.ts and README.md.
+// and shipped to Turso as SQL with `pnpm db:deploy`. See lib/db.ts, DEPLOYMENT.md,
+// and packages/db for the machinery all of that is shared through.
 
 generator client {
   provider = "prisma-client"
@@ -157,6 +158,245 @@ model Request {
   @@index([vrpId, createdAt])
   /// Settled requests inside a window, for the 24-hour figures.
   @@index([status, handledAt])
+}
+
+/// A game the casino offers.
+///
+/// The *definition* — "Blackjack", "Roulette" — and nothing about a round in
+/// progress. It is a database row rather than a constant in the source because
+/// the shelf is something an administrator arranges: which games are on it,
+/// what order they come in, and what each one is called. See lib/catalogue.ts.
+///
+/// A game has no rules of its own. `engine` names the code that plays it, and
+/// everything below this row exists so that the engine has somewhere to sit —
+/// see `Tier`, `Table` and `Shoe`.
+model Game {
+  id Int @id @default(autoincrement())
+
+  /// The address it lives at: `/play/blackjack`. Lower-case, hyphenated, and
+  /// unique because it is what a route resolves against.
+  slug String @unique
+
+  name String
+  /// A one-liner for the stage header and the games index.
+  blurb String?
+
+  /// A Phosphor icon name — `Spade`, `PokerChip`, `RoadHorizon`.
+  ///
+  /// Free text, checked by nothing here. An administrator types a name and the
+  /// rail tries to load it; a name that is not an icon falls back to a generic
+  /// glyph rather than breaking the shelf (components/icon.tsx). Storing a
+  /// verified id instead would mean a schema change every time Phosphor adds a
+  /// glyph, for a field whose failure mode is a wrong picture.
+  icon String @default("PokerChip")
+
+  /// Which engine plays it — a key from the registry in lib/engines.ts.
+  ///
+  /// Also free text, and for a sharper reason: an administrator pointing a game
+  /// at an engine that does not exist is a mistake that has to be *visible*
+  /// rather than impossible. It is caught when a player opens the game and
+  /// reported as a slate naming the engine it could not find
+  /// (components/games/failed.tsx). An enum would move that failure to a
+  /// migration, where the person who made it never sees it.
+  engine String
+
+  /// Whether the shelf lists it. Off is how a game is built, or retired,
+  /// without deleting the tables and the history hanging off it.
+  inRail Boolean @default(true)
+
+  /// Where it comes in the shelf. Dense and zero-based, rewritten wholesale
+  /// every time the list is saved — see `saveCatalogue`.
+  position Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tiers Tier[]
+
+  /// The shelf's order, which is every read of this table.
+  @@index([position])
+}
+
+/// A class of table: what it costs to sit at one, and how many are kept open.
+///
+/// The layer between a game and a table, and the thing an administrator
+/// actually configures. "Blackjack" is a game; "Blackjack, 1M–10M, five seats"
+/// is a tier, and the tables a player sits at are instances of it.
+///
+/// ── Why the tables are not configured directly ────────────────────────────
+/// Because a fixed list of tables can fill up, and a casino whose tables are
+/// all full turns players away. `floor` is how many are kept open at all times
+/// — what the lobby shows on a quiet night — and when every table in a tier is
+/// occupied the app opens another beyond it. So the admin panel describes the
+/// *kind* of table on offer and the floor decides how many of them there are at
+/// any moment. See `ensureTables` in lib/tables.ts.
+/// ─────────────────────────────────────────────────────────────────────────
+///
+/// Singleplayer games have tiers too, and they are the stakes the player picks
+/// before the game loads. A singleplayer game with one tier has nothing to pick
+/// and goes straight to the table.
+model Tier {
+  id Int @id @default(autoincrement())
+
+  game   Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  gameId Int
+
+  /// How it reads in the lobby — "Low Roller", "High Roller".
+  name String
+
+  /// The bet a table of this class will take, in whole chips. `BigInt` for the
+  /// same reason a balance is: this server bets in billions.
+  minBet BigInt
+  maxBet BigInt
+
+  /// Seats at one of its tables. Singleplayer tiers are one, and nothing
+  /// enforces that here — the engine's own seat count is what the app builds
+  /// against (lib/engines.ts).
+  seats Int @default(5)
+
+  /// Tables of this class kept open whether or not anyone is at them. Zero is
+  /// legal and means "open one when somebody asks", which is what a
+  /// singleplayer tier wants: a private table each, none standing empty.
+  floor Int @default(1)
+
+  position Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tables Table[]
+
+  /// The lobby: one game's tiers, in the order the admin put them.
+  @@index([gameId, position])
+}
+
+/// Somewhere to sit and play.
+///
+/// Every game gets these, singleplayer included. A singleplayer game will never
+/// show a player a list of them — the table is made for them and they are put
+/// at it — but the table is still what owns the shoe, the seat and the round in
+/// progress, and having one shape for both is what keeps an engine from having
+/// to know which kind of game it is playing.
+model Table {
+  id Int @id @default(autoincrement())
+
+  tier   Tier @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  tierId Int
+
+  /// Its number within the tier — "High Roller 3". Dense from 1, and reused
+  /// once a table is reaped.
+  number Int
+
+  /// Opened because the tier's others were full, rather than because the floor
+  /// says it should exist. The difference only matters when it empties: an
+  /// overflow table is taken away again, a floor table stays and waits.
+  overflow Boolean @default(false)
+
+  /// The one player a private table belongs to. Set for every singleplayer
+  /// table, and the hook the paid solo-table upgrade will hang off later
+  /// (PRODUCT.md). `null` is a public table.
+  ownerVrpId Int?
+
+  /// The engine's own state for the round in progress, as JSON.
+  ///
+  /// Opaque here on purpose: what a hand of blackjack looks like is the
+  /// engine's business, and a column per game would be a migration per game.
+  /// Read defensively — a table can outlive the version of the engine that
+  /// wrote its state.
+  state String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// When the last player got up, or `null` while somebody is still sitting
+  /// there. What the reaper works from — see `sweep` in lib/tables.ts.
+  emptiedAt DateTime?
+
+  seats TableSeat[]
+  shoe  Shoe?
+
+  /// The lobby reads a tier's tables in number order.
+  @@unique([tierId, number])
+  /// A player's private table, found without scanning the tier.
+  @@index([ownerVrpId])
+}
+
+/// A player, sitting at a table.
+///
+/// Its own row rather than a list on the table, because sitting down is a thing
+/// two players can try to do at once and only the database can decide between
+/// them: the unique constraint on the seat number is what makes the loser lose
+/// rather than both of them ending up in the same chair.
+model TableSeat {
+  id Int @id @default(autoincrement())
+
+  table   Table @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  tableId Int
+
+  /// Which chair, from 1. Bounded by the tier's `seats` when it is taken.
+  position Int
+
+  vrpId Int
+  /// Who they were when they sat down, for the same reason a request captures
+  /// it — the table shows the character at it, not whoever holds the account by
+  /// the time somebody looks.
+  playerName String?
+
+  joinedAt DateTime @default(now())
+
+  /// Last time this player's app said it was still there.
+  ///
+  /// A player closing the app does not get to say goodbye — the window is an
+  /// iframe the game can take away — so a seat is held by a heartbeat rather
+  /// than released by a departure. One that goes quiet is swept. See
+  /// `SEAT_TIMEOUT` in lib/casino.ts.
+  seenAt DateTime @default(now())
+
+  /// One player, one chair.
+  @@unique([tableId, position])
+  @@unique([tableId, vrpId])
+  /// Where is this player sitting? Asked on every load of every game page.
+  @@index([vrpId])
+}
+
+/// The cards a table is dealing from.
+///
+/// Four decks by default, shuffled together: enough that counting them is work,
+/// and few enough that the deal is still a deal rather than a random number
+/// generator wearing a hat. The table owns exactly one, and it lasts as long as
+/// the table has somebody at it — when the last player leaves, the shoe goes
+/// with them, so the next player to sit down gets a fresh one rather than
+/// inheriting whatever the last table left in it.
+///
+/// ── Nothing in here ever crosses to a browser ─────────────────────────────
+/// `cards` is the whole shoe in dealing order, undealt cards included, and a
+/// player who could read it would know every card before it was turned over.
+/// It is loaded only inside lib/shoe.ts, and what leaves the server is a count
+/// of what is left. There is deliberately no row-flattener for this model in
+/// lib/rows.ts — the thing that exists to decide what a browser may see.
+/// ─────────────────────────────────────────────────────────────────────────
+model Shoe {
+  id Int @id @default(autoincrement())
+
+  table   Table @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  tableId Int   @unique
+
+  decks Int @default(4)
+
+  /// Every card, in the order it will be dealt, as a JSON array of two-
+  /// character codes — `["AS","TD","2C"]`. See lib/shoe.ts for the notation.
+  cards String
+
+  /// How many have been dealt. Drawing is an increment, so two hands dealt at
+  /// once cannot take the same card.
+  cursor Int @default(0)
+
+  /// How many times this shoe has been re-shuffled since the table opened.
+  /// Reaching the cut card re-shuffles rather than running the shoe dry.
+  shuffles Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 /// Something that happened, written down.

@@ -18,9 +18,12 @@ import "server-only";
  *   original visible.
  */
 
+// The generated client's own runtime, which is where the list of members a
+// transaction client does not have is defined. See `Db` below.
+import type { ITXClientDenyList } from "@prisma/client/runtime/client";
+
 import { prisma } from "./db";
 import type { AuditAction } from "./desk";
-import { Prisma } from "./generated/prisma/client";
 import type { Role } from "./generated/prisma/enums";
 
 /**
@@ -30,8 +33,19 @@ import type { Role } from "./generated/prisma/enums";
  * that advanced and a trail that says it did not is a worse state than either
  * failing, and passing the transaction client here is what makes the two one
  * write.
+ *
+ * Deliberately **not** `Prisma.TransactionClient | typeof prisma`. That
+ * generated type is `Omit<DefaultPrismaClient, ITXClientDenyList>` — the
+ * *unextended* client — so once `prisma` carries an extension (lib/db.ts) the
+ * union has one extended arm and one plain one, and every model method becomes
+ * two call signatures TypeScript cannot reconcile. It surfaces as "This
+ * expression is not callable" at every ordinary `db.thing.create()`.
+ *
+ * `Omit<typeof prisma, ITXClientDenyList>` is what `$transaction` hands a
+ * callback on an extended client, and the full client is assignable to it. One
+ * type covers both, and it tracks whatever extensions `prisma` gains.
  */
-export type Db = Prisma.TransactionClient | typeof prisma;
+export type Db = Omit<typeof prisma, ITXClientDenyList>;
 
 export type AuditEntry = {
   action: AuditAction;
