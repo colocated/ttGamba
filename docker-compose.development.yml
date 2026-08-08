@@ -1,0 +1,39 @@
+# Local Postgres and Dragonfly, matching .env.example's defaults exactly —
+# copy that file to .env and it points straight at these.
+#
+# Started automatically by `pnpm dev`/`pnpm bas` if this file exists and
+# Docker is available (see scripts/app.mjs). `docker compose up -d` is
+# idempotent, so nothing extra happens on a second run in the same session.
+#
+#   docker compose -f docker-compose.development.yml up -d
+#   docker compose -f docker-compose.development.yml down       # stop
+#   docker compose -f docker-compose.development.yml down -v    # stop and wipe data
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ttgamba
+    ports:
+      - "5432:5432"
+    volumes:
+      - dev-postgres:/var/lib/postgresql/data
+
+  # Optional — REDIS_URL is unset by default (see .env.example), so nothing
+  # tries to reach this unless you point it here yourself. Included anyway so
+  # dev can exercise the cache path without a separate setup.
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    restart: unless-stopped
+    ulimits:
+      memlock: -1
+    ports:
+      - "6379:6379"
+    volumes:
+      - dev-dragonflydata:/data
+
+volumes:
+  dev-postgres:
+  dev-dragonflydata:

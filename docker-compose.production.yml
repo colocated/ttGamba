@@ -1,0 +1,45 @@
+# The production stack — ttgamba, Postgres and Dragonfly in one compose file
+# so Coolify puts them on the same shared network and they resolve each other
+# by plain service name. Two standalone Coolify resources do not share a
+# network by default, and the toggle meant to bridge them ("Connect to
+# Predefined Network") was broken as of writing — see apps/ttgamba/DEPLOYMENT.md.
+# Same-compose-file networking sidesteps that entirely rather than working
+# around it.
+#
+# Deploy this as one Coolify "Docker Compose" resource. `POSTGRES_PASSWORD` is
+# the one secret its environment-variables panel needs to supply — everything
+# else here is already wired to the services below.
+services:
+  ttgamba:
+    image: ghcr.io/colocated/ttgamba:latest
+    restart: unless-stopped
+    ports:
+      - "3000"
+    environment:
+      DATABASE_URL: postgresql://ttgamba:${POSTGRES_PASSWORD}@postgres:5432/ttgamba
+      REDIS_URL: redis://dragonfly:6379
+    depends_on:
+      - postgres
+      - dragonfly
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ttgamba
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ttgamba
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    restart: unless-stopped
+    ulimits:
+      memlock: -1
+    volumes:
+      - dragonflydata:/data
+
+volumes:
+  postgres-data:
+  dragonflydata:
