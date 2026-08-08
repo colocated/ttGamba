@@ -224,6 +224,46 @@ function stopPreviousServer() {
   fs.rmSync(pidfile, { force: true });
 }
 
+/**
+ * Bring up the local dev database (and cache), if this repo has one to bring
+ * up. `docker compose up -d` is idempotent — it only starts what is not
+ * already running — so this costs nothing extra on a second `pnpm dev` in the
+ * same session, and nothing at all once everything is already up.
+ *
+ * Best-effort on purpose: no compose file, no Docker, or a compose failure all
+ * fall through to running the app anyway. Someone pointing `.env` at a
+ * database that already exists needs none of this, and a hard failure here
+ * would be a worse trade than a dev server that still starts.
+ */
+async function ensureDevServices() {
+  const composeFile = path.join(ROOT, "docker-compose.development.yml");
+  if (!fs.existsSync(composeFile)) return;
+
+  console.log("Starting local dev services (docker-compose.development.yml)...");
+
+  const code = await new Promise((resolve) => {
+    const child = spawn("docker", ["compose", "-f", composeFile, "up", "-d"], {
+      stdio: "inherit",
+      cwd: ROOT,
+    });
+    child.on("error", () => resolve(1));
+    child.on("exit", (exitCode, signal) => resolve(signal ? 128 : (exitCode ?? 1)));
+  });
+
+  if (code !== 0) {
+    console.warn(
+      "Could not start local dev services — is Docker running? Continuing anyway; " +
+        "the app will fail its own way if it needed them.",
+    );
+  }
+}
+
+// Serving is what actually needs a database — `dev` on its own, and the
+// `serve` half of `bas` (`build,serve`). `build` alone (CI's own `pnpm build`)
+// never reaches this file at all, so there is no risk of it trying to start
+// Docker.
+if (scripts.includes("dev") || scripts.includes("serve")) await ensureDevServices();
+
 if (scripts.includes("build")) stopPreviousServer();
 
 for (const [index, script] of scripts.entries()) {
