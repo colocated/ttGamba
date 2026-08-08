@@ -125,13 +125,27 @@ game state are the latter, and belong nowhere near this.
 | `@tt/db` | `createPrismaSingleton`, `pgAdapter`, `databaseUrl`. `server-only`. |
 | `@tt/db/cache` | `redisCache()` — the Redis query cache extension. `server-only`. |
 | `@tt/db/env` | `databaseUrl()`. Plain JS, no `server-only` — `prisma.config.ts` reads it from a bare Node process. |
+| `@tt/db/migrate` | `deployMigrations({ migrationsDir })`. Plain JS — see below for why an app needs it at all. |
 | `@tt/db/prisma-config` | `userAppPrismaConfig()` for the Prisma CLI. |
 
-`env.mjs` is plain JavaScript with JSDoc types on purpose: the Prisma CLI runs
-it before anything TypeScript has touched.
+`env.mjs` and `migrate.mjs` are plain JavaScript with JSDoc types on purpose:
+the Prisma CLI runs the former before anything TypeScript has touched, and the
+latter runs inside a runtime container with no TypeScript runner in it at all.
 
-Deploying migrations is `prisma migrate deploy` — the ordinary Prisma command,
-against `DATABASE_URL`, no wrapper needed. That is not a given: it is what
-Turso could not do, because its schema engine only spoke `file:` and rejected
-`libsql://` outright. Postgres's own protocol is what the schema engine
-already speaks, so nothing here stands between the CLI and the database.
+For a human, or CI, deploying migrations is `prisma migrate deploy` — the
+ordinary Prisma command, against `DATABASE_URL`, no wrapper needed. That is not
+a given: it is what Turso could not do, because its schema engine only spoke
+`file:` and rejected `libsql://` outright. Postgres's own protocol is what the
+schema engine already speaks, so nothing stands between the CLI and the
+database there.
+
+**A runtime container is a different environment**, though, not a different
+database. Next's standalone output only traces what a request actually
+imports, and nothing at request time imports the CLI or its query-engine
+binaries — shipping them into the image just to run migrations once at boot
+would undo most of what standalone output is for. `deployMigrations` is the
+same idea with none of that weight: `pg`, already in the image for the app's
+own queries, talking to Postgres directly and keeping the same
+`_prisma_migrations` bookkeeping the CLI does, so a database migrated this way
+is one `prisma migrate status` still recognises. `apps/ttgamba/bin/entrypoint.mjs`
+is the one place this is actually called.

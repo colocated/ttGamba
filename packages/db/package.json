@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/client.ts",
     "./env": "./src/env.mjs",
+    "./migrate": "./src/migrate.mjs",
     "./prisma-config": "./src/prisma-config.ts",
     "./cache": "./src/cache.ts"
   },

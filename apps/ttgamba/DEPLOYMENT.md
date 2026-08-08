@@ -42,6 +42,17 @@ that there is nothing pending and exits. `db:deploy` is `prisma migrate
 deploy`, unwrapped — same `migration.sql` files, same order, same
 `_prisma_migrations` bookkeeping Prisma has always used.
 
+**The container image does this step itself.** `apps/ttgamba/bin/entrypoint.mjs`
+applies pending migrations before the server starts, so a Coolify (or any
+container) deploy needs nothing run by hand — the steps above are for running
+the app outside a container. It isn't `prisma migrate deploy` under the hood:
+the image's standalone output deliberately has no CLI or query-engine binaries
+in it, so `packages/db/src/migrate.mjs` talks to Postgres directly with `pg`
+instead, doing the same bookkeeping. Set `SKIP_MIGRATIONS` to anything to boot
+straight to the server instead — for a rollback to an image whose migrations
+are already applied, or a multi-replica deploy where only one instance should
+be the one to migrate.
+
 ## Changing the schema
 
 ```sh

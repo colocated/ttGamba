@@ -64,8 +64,26 @@ COPY --from=build /repo/apps/ttgamba/.next/standalone ./
 COPY --from=build /repo/apps/ttgamba/.next/static     ./apps/ttgamba/.next/static
 COPY --from=build /repo/apps/ttgamba/public           ./apps/ttgamba/public
 
+# Nothing at request time imports these, so standalone's tracing has no reason
+# to have brought them along — added by hand for entrypoint.mjs, which runs
+# migrations before the server starts (see that file for the `SKIP_MIGRATIONS`
+# escape hatch).
+COPY --from=build /repo/apps/ttgamba/bin/entrypoint.mjs  ./apps/ttgamba/bin/entrypoint.mjs
+COPY --from=build /repo/apps/ttgamba/prisma/migrations   ./apps/ttgamba/prisma/migrations
+COPY --from=build /repo/packages/db/src/migrate.mjs      ./packages/db/src/migrate.mjs
+COPY --from=build /repo/packages/db/src/env.mjs          ./packages/db/src/env.mjs
+
+# The tracer copies the `.pnpm` store entry `pg` needs — real code, since the
+# app's own queries use it — but not the top-level `node_modules/pg` symlink
+# pnpm normally provides, because nothing in Next's own bundle resolves it by
+# that bare name. `entrypoint.mjs` does, running outside that bundle entirely,
+# so the one symlink tracing had no reason to keep is recreated by hand. `pg`'s
+# own dependencies (pg-pool, pg-protocol, ...) already sit beside it inside the
+# same `.pnpm` entry, so nothing else is missing.
+RUN ln -s "$(find /repo/node_modules/.pnpm -maxdepth 1 -name 'pg@*' -type d | head -1)/node_modules/pg" /repo/node_modules/pg
+
 # `node` exists in the base image already; the app has no reason to be root.
 USER node
 
 EXPOSE 3000
-CMD ["node", "apps/ttgamba/server.js"]
+CMD ["node", "apps/ttgamba/bin/entrypoint.mjs"]
