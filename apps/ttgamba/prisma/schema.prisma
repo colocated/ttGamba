@@ -285,6 +285,21 @@ model Tier {
   /// singleplayer tier wants: a private table each, none standing empty.
   floor Int @default(1)
 
+  /// How many decks go into this class of table's shoe — a range, not a
+  /// number, and re-rolled every time the shoe is restocked.
+  ///
+  /// A fixed shoe size is a thing a counter can rely on: they know how many
+  /// cards are in play, so every card seen tells them about the ones left. A
+  /// shoe that might be four decks or might be six means the denominator they
+  /// are counting against is itself unknown, and a running count is worth much
+  /// less. Together with the randomised cut card (lib/shoe.ts) that is the
+  /// whole of this table's defence, and it costs an honest player nothing.
+  ///
+  /// Set both to the same number for a fixed shoe. Ignored entirely by a game
+  /// whose engine deals no cards.
+  minDecks Int @default(4)
+  maxDecks Int @default(6)
+
   position Int
 
   createdAt DateTime @default(now())
@@ -407,6 +422,9 @@ model Shoe {
   table   Table @relation(fields: [tableId], references: [id], onDelete: Cascade)
   tableId Int   @unique
 
+  /// How many decks are in *this* shuffle, drawn from the tier's range when
+  /// the shoe was last restocked. Re-rolled on every restock, so it is a fact
+  /// about the current shoe rather than a setting.
   decks Int @default(4)
 
   /// Every card, in the order it will be dealt, as a JSON array of two-
@@ -416,6 +434,16 @@ model Shoe {
   /// How many have been dealt. Drawing is an increment, so two hands dealt at
   /// once cannot take the same card.
   cursor Int @default(0)
+
+  /// The cut card: the cursor this shoe is retired at, once the round in
+  /// progress has finished.
+  ///
+  /// Stored rather than computed because it is *random* — somewhere between a
+  /// quarter and three quarters of the way in, drawn afresh each restock. A cut
+  /// at a fixed depth is one a player can count towards; one they cannot see
+  /// and cannot predict is what makes a running count stop being worth
+  /// keeping. Never leaves the server, for the same reason the cards do not.
+  cut Int @default(0)
 
   /// How many times this shoe has been re-shuffled since the table opened.
   /// Reaching the cut card re-shuffles rather than running the shoe dry.

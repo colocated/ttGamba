@@ -109,6 +109,8 @@ export function toTierRow(row: Tier): TierRow {
     maxBet: toChips(row.maxBet),
     seats: row.seats,
     floor: row.floor,
+    minDecks: row.minDecks,
+    maxDecks: row.maxDecks,
     position: row.position,
   };
 }

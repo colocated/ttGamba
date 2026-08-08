@@ -30,15 +30,17 @@ import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { GameControllerIcon } from "@phosphor-icons/react/dist/csr/GameController";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import { TrashIcon } from "@phosphor-icons/react/dist/csr/Trash";
-import { NamedIcon, iconName, useIcon } from "@tt/window";
+import { NamedIcon, iconName, Tooltip, useIcon } from "@tt/window";
 
 import { Button, Problem, Skeleton } from "@/components/banker/ui";
 import { Panel, Tag } from "@/components/stage";
 import {
+  MAX_DECKS,
   MAX_FLOOR,
   MAX_GAMES,
   MAX_SEATS,
   MAX_TIERS,
+  MIN_DECKS,
   MIN_SEATS,
   slugify,
   type GameDraft,
@@ -46,7 +48,7 @@ import {
 } from "@/lib/casino";
 import { getCatalogue, saveCatalogue, type CatalogueEntry } from "@/lib/catalogue";
 import { AMOUNT_LIMIT } from "@/lib/desk";
-import { ENGINE_IDS, engineFault } from "@/lib/engines";
+import { ENGINE_IDS, engineFault, findEngine } from "@/lib/engines";
 import { formatMagnitude } from "@/lib/format";
 import { refreshRail } from "@/lib/rail";
 import { useDeskAction, useDeskCall } from "@/lib/staff";
@@ -70,6 +72,8 @@ const NEW_TIER: TierDraft = {
   maxBet: 10_000_000,
   seats: 5,
   floor: 1,
+  minDecks: 4,
+  maxDecks: 6,
 };
 
 /**
@@ -98,6 +102,8 @@ const asDraft = (entry: CatalogueEntry): GameDraft => ({
     maxBet: tier.maxBet,
     seats: tier.seats,
     floor: tier.floor,
+    minDecks: tier.minDecks,
+    maxDecks: tier.maxDecks,
   })),
 });
 
@@ -475,6 +481,14 @@ function GameCard({
                 <TierFields
                   key={tier.id ?? `new-${index}`}
                   tier={tier}
+                  /*
+                    A shoe is only worth configuring for a game that has one.
+                    Read off the engine the game is currently pointed at, so
+                    the fields appear and disappear as that field is typed —
+                    and stay hidden for an engine name that resolves to
+                    nothing, which is a game that cannot deal anything yet.
+                  */
+                  dealsCards={(findEngine(game.engine)?.decks ?? 0) > 0}
                   onChange={(patch) => setTier(index, patch)}
                   onRemove={() =>
                     onChange({ tiers: game.tiers.filter((_, at) => at !== index) })
@@ -502,10 +516,13 @@ function GameCard({
 
 function TierFields({
   tier,
+  dealsCards,
   onChange,
   onRemove,
 }: {
   tier: TierDraft;
+  /** Whether this game's engine takes a shoe at all. See lib/engines.ts. */
+  dealsCards: boolean;
   onChange: (patch: Partial<TierDraft>) => void;
   onRemove: () => void;
 }) {
@@ -553,6 +570,36 @@ function TierFields({
           max={MAX_FLOOR}
           onChange={(floor) => onChange({ floor })}
         />
+
+        {/*
+          The shoe. Two fields rather than one because the *range* is the
+          point: a shoe that might be four decks and might be six is one a
+          player cannot count against, and the cut card is randomised to match
+          (lib/shoe.ts). Setting both the same gives a fixed shoe, which is a
+          legitimate thing to want and is why neither field is clamped against
+          the other here — the server sorts a pair typed the wrong way round
+          rather than refusing the save.
+        */}
+        {dealsCards ? (
+          <>
+            <Count
+              label="Fewest decks"
+              hint="Re-rolled every time the shoe is restocked."
+              value={tier.minDecks}
+              min={MIN_DECKS}
+              max={MAX_DECKS}
+              onChange={(minDecks) => onChange({ minDecks })}
+            />
+            <Count
+              label="Most decks"
+              hint="Same as the fewest for a shoe that never varies."
+              value={tier.maxDecks}
+              min={MIN_DECKS}
+              max={MAX_DECKS}
+              onChange={(maxDecks) => onChange({ maxDecks })}
+            />
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -682,22 +729,23 @@ function IconButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-      className={`rounded-control border p-2 transition-colors duration-120 ease-out ${
-        disabled
-          ? "cursor-not-allowed border-edge bg-tone-2 text-ink-muted/50"
-          : danger
-            ? "cursor-pointer border-loss/50 bg-loss/10 text-loss hover:bg-loss/20"
-            : "cursor-pointer border-edge bg-tone-2 text-ink-soft hover:bg-raised-hover hover:text-ink"
-      }`}
-    >
-      {children}
-      <span className="sr-only">{label}</span>
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={`rounded-control border p-2 transition-colors duration-120 ease-out ${
+          disabled
+            ? "cursor-not-allowed border-edge bg-tone-2 text-ink-muted/50"
+            : danger
+              ? "cursor-pointer border-loss/50 bg-loss/10 text-loss hover:bg-loss/20"
+              : "cursor-pointer border-edge bg-tone-2 text-ink-soft hover:bg-raised-hover hover:text-ink"
+        }`}
+      >
+        {children}
+        <span className="sr-only">{label}</span>
+      </button>
+    </Tooltip>
   );
 }
 

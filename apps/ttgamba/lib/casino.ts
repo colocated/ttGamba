@@ -60,6 +60,16 @@ export type TierRow = {
   maxBet: number;
   seats: number;
   floor: number;
+  /**
+   * How many decks go in the shoe — a range, re-rolled every restock.
+   *
+   * Safe to send to a browser, unlike anything else about a shoe: it says what
+   * the table's rules are, not what is in it. Which shuffle is currently in
+   * play, how deep its cut card sits and what order the cards are in all stay
+   * on the server (lib/shoe.ts).
+   */
+  minDecks: number;
+  maxDecks: number;
   position: number;
 };
 
@@ -129,6 +139,8 @@ export type TierDraft = {
   maxBet: number;
   seats: number;
   floor: number;
+  minDecks: number;
+  maxDecks: number;
 };
 
 /** A game as the editor holds it. Order is the position in the array. */
@@ -162,6 +174,18 @@ export const ENGINE_LIMIT = 40;
 
 export const MIN_SEATS = 1;
 export const MAX_SEATS = 12;
+
+/**
+ * Decks in a shoe.
+ *
+ * One is a legal shoe and eight is where a real casino stops — past that the
+ * cards stop being a shoe and start being a wall, and every extra deck is more
+ * JSON on a row that is read on the way into every hand. Sanity bounds rather
+ * than policy: which range a table actually plays is the administrator's, and
+ * setting both ends the same is how a fixed shoe is asked for.
+ */
+export const MIN_DECKS = 1;
+export const MAX_DECKS = 8;
 /** Tables of one class kept standing open. Zero means "open one when asked". */
 export const MAX_FLOOR = 10;
 

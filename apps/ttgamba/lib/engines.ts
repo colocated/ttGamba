@@ -45,12 +45,22 @@ export type Engine = {
    */
   maxSeats: number;
   /**
-   * Decks in the shoe, or `0` for a game that deals no cards.
+   * Whether this game deals cards, said as a deck count.
    *
-   * Four is the house default and the reason is in prisma/schema.prisma:
-   * enough that counting them is work, few enough that the deal is still a
-   * deal. A zero here means no shoe is ever asked for, and `cardsLeft` stays
-   * `null` for every table of that game.
+   * Zero means no shoe is ever asked for, and `cardsLeft` stays `null` for
+   * every table of that game. Anything above zero means it takes a shoe.
+   *
+   * ── It is not how many decks a table plays with ───────────────────────────
+   * That moved to the tier, where an administrator can set it — and set it as
+   * a *range*, because a shoe of a known size is one a player can count
+   * against (prisma/schema.prisma, and lib/shoe.ts for the cut card that goes
+   * with it). What is left here is the fact that only code can know: whether
+   * the game has cards in it at all.
+   *
+   * The number is still a number rather than a boolean because it is also the
+   * house default — what a tier would play if it had never been configured —
+   * and four is that for the reason it always was: enough that counting them
+   * is work, few enough that the deal is still a deal.
    */
   decks: number;
 };

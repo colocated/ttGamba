@@ -38,41 +38,81 @@ import "server-only";
 import { randomInt } from "node:crypto";
 
 import type { Db } from "./audit";
+import { CARDS_PER_DECK, RANKS, SUITS, type Card } from "./cards";
+
+/*
+  The notation itself is in lib/cards.ts, not here, and re-exported so that
+  everything already dealing from this module reads the same as it did. The
+  split is the same one this file's header is about: what a card is *called* has
+  to be known on both sides of the wire, because a card dealt face up gets drawn
+  on a screen. Which cards, and in what order, is the part that stays here.
+*/
+export { CARDS_PER_DECK, RANKS, SUITS, type Card, type Rank, type Suit } from "./cards";
 
 /**
- * A card, as two characters: rank then suit.
+ * How deep the cut card can fall, as a fraction of the shoe.
  *
- * `AS` is the ace of spades, `TD` the ten of diamonds, `2C` the two of clubs.
- * Ten is `T` so that every card is exactly two characters wide and a hand can
- * be sliced without parsing.
+ * ── Why this is a range and not a number ──────────────────────────────────
+ * The cut card is what stops a shoe being dealt to its last card, and dealing
+ * to the last card is what makes counting worth doing: by then what is left is
+ * no longer a mystery. A cut at a *fixed* depth solves only half of that,
+ * because the depth itself becomes information — a player who knows the shoe
+ * always dies at 75% knows exactly how many hands are left to bet big on, and
+ * the end of every shoe is the part a counter is waiting for.
  *
- * What a card is *worth* is deliberately not here. An ace is 1 or 11 at
- * blackjack and high at poker, and a shoe that had an opinion about it would be
- * a shoe that only one game could deal from.
+ * Drawn afresh on every restock, the cut is somewhere between a quarter and
+ * three quarters of the way in and nobody at the table knows where. A count is
+ * still arithmetic anybody may do; what it is no longer is a schedule.
+ *
+ * Together with the tier's deck *range* (prisma/schema.prisma) this leaves a
+ * counter unsure both how many cards are in play and how many of them they
+ * will get to see. It costs an honest player nothing at all: they are dealt
+ * from a uniformly shuffled shoe either way.
  */
-export const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K"] as const;
-export const SUITS = ["S", "H", "D", "C"] as const;
-
-export type Rank = (typeof RANKS)[number];
-export type Suit = (typeof SUITS)[number];
-/** Not a template type — a card read back out of the database is a string. */
-export type Card = string;
-
-export const CARDS_PER_DECK = RANKS.length * SUITS.length;
+const CUT = { shallowest: 0.25, deepest: 0.75 } as const;
 
 /**
- * How much of the shoe is dealt before it is re-shuffled.
+ * How many decks a table's shoe holds — the tier's range, re-rolled on every
+ * restock.
  *
- * The cut card, in other words. Dealing a shoe to its last card is what makes
- * counting worth doing — by then what is left is no longer a mystery — so the
- * last quarter is never dealt. A real table reaches the cut and finishes the
- * round; this one re-shuffles at the start of the next draw that would cross
- * it, which is the same idea without the engine having to remember to ask.
+ * `max` below `min` is not an error to throw over. An administrator who typed
+ * the two the wrong way round has made a mistake worth correcting, not one
+ * worth taking a table off the floor for, so the pair is read in whichever
+ * order it arrives.
  */
-const PENETRATION = 0.75;
+export type DeckRange = { min: number; max: number };
 
 /** Four decks unless an engine says otherwise. See lib/engines.ts. */
 export const DEFAULT_DECKS = 4;
+
+/** How many decks this shuffle gets. Uniform across the range, ends included. */
+function pickDecks({ min, max }: DeckRange): number {
+  const low = Math.max(1, Math.min(min, max));
+  const high = Math.max(low, Math.max(min, max));
+  // `randomInt` is exclusive of the upper bound, so this covers low..high.
+  return randomInt(low, high + 1);
+}
+
+/**
+ * Where this shoe's cut card goes, as a cursor value.
+ *
+ * Whole cards, drawn from the crypto source like everything else in here — the
+ * cut decides when the advantage a counter has been building is thrown away,
+ * which makes it as much a part of the game's fairness as the shuffle itself.
+ */
+function pickCut(total: number): number {
+  const shallowest = Math.floor(total * CUT.shallowest);
+  const deepest = Math.floor(total * CUT.deepest);
+  if (deepest <= shallowest) return deepest;
+  return randomInt(shallowest, deepest + 1);
+}
+
+/** A fresh shoe: a deck count from the range, shuffled, with its cut card placed. */
+export function restock(range: DeckRange): { decks: number; cards: Card[]; cut: number } {
+  const decks = pickDecks(range);
+  const cards = build(decks);
+  return { decks, cards, cut: pickCut(cards.length) };
+}
 
 /** One deck, in order. Shuffled immediately, so the order is only a starting point. */
 function deck(): Card[] {
@@ -132,15 +172,26 @@ function parse(raw: string): Card[] {
  * A game that deals no cards passes `0` and gets no shoe at all, which is why
  * `cardsLeft` is nullable everywhere it appears.
  */
-export async function requestShoe(db: Db, tableId: number, decks: number): Promise<void> {
-  if (decks <= 0) return;
+export async function requestShoe(
+  db: Db,
+  tableId: number,
+  range: DeckRange | null,
+): Promise<void> {
+  if (range === null) return;
 
   const existing = await db.shoe.findUnique({ where: { tableId }, select: { id: true } });
   if (existing) return;
 
+  const fresh = restock(range);
+
   try {
     await db.shoe.create({
-      data: { tableId, decks, cards: JSON.stringify(build(decks)) },
+      data: {
+        tableId,
+        decks: fresh.decks,
+        cards: JSON.stringify(fresh.cards),
+        cut: fresh.cut,
+      },
     });
   } catch {
     // Lost the race to another player sitting down. The shoe exists now, which
@@ -161,23 +212,86 @@ export async function discardShoe(db: Db, tableId: number): Promise<void> {
 }
 
 /**
- * How many cards are left before the cut.
+ * How many cards are physically left in the shoe.
  *
  * A pure function over the two columns rather than a query, so a lobby can work
  * it out for every table on screen from the rows it already fetched. It is also
  * the only thing about a shoe that is allowed out — see the note at the top.
+ *
+ * ── Why this counts to the end and not to the cut ─────────────────────────
+ * It used to answer "cards left before the re-shuffle", which was a fair thing
+ * to publish when the cut sat at a fixed depth everybody could work out anyway.
+ * Now that the cut is random and hidden, that figure would be the one thing on
+ * screen quietly telling a counter exactly how much shoe was left to play —
+ * which is the whole of what the randomisation was for.
+ *
+ * So this is the honest, useless number: how thick the stack is. It gives away
+ * nothing that watching the table does not, and no player is shown it today
+ * (it is on its way to a superadmin debug view).
  */
 export function remaining(decks: number, cursor: number): number {
-  return Math.max(0, Math.floor(decks * CARDS_PER_DECK * PENETRATION) - cursor);
+  return Math.max(0, decks * CARDS_PER_DECK - cursor);
+}
+
+/**
+ * Retire the shoe if the cut card has come out, and do nothing if it has not.
+ *
+ * ── Why this is a call and not something `draw` decides ───────────────────
+ * Because a shoe is retired *between rounds*, never inside one. A dealer who
+ * reaches the cut card finishes the hand in front of them and shuffles
+ * afterwards; re-shuffling mid-deal would mean a player's two cards came out of
+ * different shoes, which is not a rule anybody plays by and is exactly the sort
+ * of thing that looks like cheating whether or not it is.
+ *
+ * So the engine calls this when a round has finished settling and never at any
+ * other time, and `draw` is left with no opinion about the cut at all.
+ *
+ * The deck count is re-rolled here as well as the cards, so "how many decks am
+ * I playing against" is a question that goes stale every shoe.
+ */
+export async function reshuffleIfPastCut(
+  db: Db,
+  tableId: number,
+  range: DeckRange,
+): Promise<boolean> {
+  const shoe = await db.shoe.findUnique({
+    where: { tableId },
+    select: { cursor: true, cut: true },
+  });
+  if (!shoe || shoe.cursor < shoe.cut) return false;
+
+  const fresh = restock(range);
+
+  /*
+    Conditional on the cursor, like every other write in this file. Two players
+    finishing the same round can both arrive here, and the second one must not
+    throw away a shoe the first has already replaced — which would be a
+    re-shuffle after nought cards, and a table that never gets past its first
+    hand.
+  */
+  const done = await db.shoe.updateMany({
+    where: { tableId, cursor: shoe.cursor },
+    data: {
+      decks: fresh.decks,
+      cards: JSON.stringify(fresh.cards),
+      cut: fresh.cut,
+      cursor: 0,
+      shuffles: { increment: 1 },
+    },
+  });
+
+  return done.count === 1;
 }
 
 /**
  * Deal.
  *
- * Re-shuffles first if what is left would not see the draw out, or if the cut
- * card has been reached. Either way the caller gets the cards it asked for, so
- * an engine never has to handle "the shoe ran out mid-hand" — there is no such
- * state.
+ * Re-shuffles first only if what is physically left would not see the draw out.
+ * That is a safety net and not the ordinary way a shoe is replaced — the cut
+ * card is, and `reshuffleIfPastCut` is where that happens, between rounds. A
+ * shoe cut between a quarter and three quarters of the way in should never
+ * reach this, and if it does the caller still gets the cards it asked for, so
+ * an engine never has to handle "the shoe ran out mid-hand".
  *
  * ── Why the cursor is a compare-and-swap ──────────────────────────────────
  * Two hands can be dealt at the same moment: a table full of players hitting at
@@ -196,16 +310,22 @@ export async function draw(db: Db, tableId: number, count: number): Promise<Card
     if (!shoe) throw new Error(`Table ${tableId} has no shoe to deal from`);
 
     const cards = parse(shoe.cards);
-    const cut = Math.floor(shoe.decks * CARDS_PER_DECK * PENETRATION);
 
-    if (shoe.cursor + count > Math.min(cut, cards.length)) {
-      // Past the cut, or simply not enough left. A fresh shuffle resets the
-      // cursor, and the same compare-and-swap guards it — a second dealer that
-      // re-shuffled first wins and this attempt goes round again.
+    if (shoe.cursor + count > cards.length) {
+      /*
+        Genuinely out of cards, which should not happen — the cut retires a
+        shoe long before its last card. Rebuilt at the same deck count rather
+        than re-rolled from the tier's range: this is a shoe being rescued
+        mid-hand, and the range belongs to the deliberate restock between
+        rounds. The same compare-and-swap guards it, so a second dealer that
+        got there first wins and this attempt goes round again.
+      */
+      const rescued = restock({ min: shoe.decks, max: shoe.decks });
       const reshuffled = await db.shoe.updateMany({
         where: { tableId, cursor: shoe.cursor },
         data: {
-          cards: JSON.stringify(build(shoe.decks)),
+          cards: JSON.stringify(rescued.cards),
+          cut: rescued.cut,
           cursor: 0,
           shuffles: { increment: 1 },
         },

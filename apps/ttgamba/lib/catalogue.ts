@@ -32,10 +32,12 @@ import {
   BLURB_LIMIT,
   ENGINE_LIMIT,
   ICON_LIMIT,
+  MAX_DECKS,
   MAX_FLOOR,
   MAX_GAMES,
   MAX_SEATS,
   MAX_TIERS,
+  MIN_DECKS,
   MIN_SEATS,
   NAME_LIMIT,
   slugify,
@@ -119,6 +121,8 @@ type Checked = {
     maxBet: bigint;
     seats: number;
     floor: number;
+    minDecks: number;
+    maxDecks: number;
   }[];
 };
 
@@ -148,8 +152,11 @@ function check(draft: GameDraft): Checked | null {
     const maxBet = readWhole(tier?.maxBet, 1, AMOUNT_LIMIT);
     const seats = readWhole(tier?.seats, MIN_SEATS, MAX_SEATS);
     const floor = readWhole(tier?.floor, 0, MAX_FLOOR);
+    const minDecks = readWhole(tier?.minDecks, MIN_DECKS, MAX_DECKS);
+    const maxDecks = readWhole(tier?.maxDecks, MIN_DECKS, MAX_DECKS);
     if (tierName === null || minBet === null || maxBet === null) return null;
     if (seats === null || floor === null) return null;
+    if (minDecks === null || maxDecks === null) return null;
     // A minimum above the maximum is a table nobody can bet at.
     if (minBet > maxBet) return null;
 
@@ -160,6 +167,15 @@ function check(draft: GameDraft): Checked | null {
       maxBet: toStored(maxBet),
       seats,
       floor,
+      /*
+        Sorted rather than refused. A deck range the wrong way round is a typo
+        with an obvious reading — the panel already draws it as two fields side
+        by side — and unlike a bet range it cannot produce a table nobody can
+        play at: the shoe just picks from the pair either way. Bet limits are
+        refused because "minimum 10M, maximum 1M" has no honest reading at all.
+      */
+      minDecks: Math.min(minDecks, maxDecks),
+      maxDecks: Math.max(minDecks, maxDecks),
     });
   }
 
@@ -271,6 +287,8 @@ export async function saveCatalogue(
           maxBet: tier.maxBet,
           seats: tier.seats,
           floor: tier.floor,
+          minDecks: tier.minDecks,
+          maxDecks: tier.maxDecks,
           position: tierPosition,
         };
 
