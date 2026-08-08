@@ -17,23 +17,30 @@ jobs:
   # Which apps does this push actually touch? An edit under packages/ counts as
   # touching all of them, because that is exactly what it does.
   #
-  # Adding an app is two edits: a filter here, and its own Dockerfile.
+  # The filter list is generated from apps/ itself (scripts/list-apps.mjs), so
+  # adding an app is one edit: give it a Dockerfile. Nothing here needs to know
+  # its name.
   changes:
     runs-on: ubicloud-standard-4
     outputs:
       apps: ${{ steps.filter.outputs.changes }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Discover apps
+        id: discover
+        run: |
+          delimiter="apps_$(date +%s%N)"
+          {
+            echo "filters<<$delimiter"
+            node scripts/list-apps.mjs --paths-filter
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          filters: |
-            ttgamba:
-              - 'apps/ttgamba/**'
-              - 'packages/**'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-              - '.github/workflows/build.yml'
+          filters: ${{ steps.discover.outputs.filters }}
 
   build:
     needs: changes
