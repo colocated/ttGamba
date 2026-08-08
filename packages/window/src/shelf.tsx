@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import type { Icon } from "@phosphor-icons/react";
 
 import { NamedIcon } from "./icon";
+import { Tooltip } from "./tooltip";
 
 /** Collapsed: an icon ladder. Expanded: icons plus labels. */
 const RAIL = 52;
@@ -45,6 +46,7 @@ export function Shelf({
   secondary = [],
   label = "Sections",
   fallbackIcon,
+  onNavigate,
 }: {
   pinned: boolean;
   /** The top list — whatever this app is mostly for. */
@@ -55,6 +57,25 @@ export function Shelf({
   label?: string;
   /** Drawn for a string icon that turns out not to name one. See ./icon.tsx. */
   fallbackIcon?: Icon;
+  /**
+   * Asked before the shelf navigates anywhere. Return `false` to stop it.
+   *
+   * For an app where leaving a page *costs* something — a seat at a table, a
+   * half-finished form — and the player should be asked first. The shelf has
+   * no way of knowing that and does not try to: it asks, and an app that
+   * answers `false` has taken the decision over and is responsible for
+   * navigating itself if the player agrees.
+   *
+   * It is asked for the entry the player is already on as well. Clicking the
+   * section you are in is ordinarily a no-op, but for an app that can be
+   * somewhere *within* a section — at a table inside a game — it is how a
+   * player asks to go back up, and swallowing it here would make that
+   * impossible to offer.
+   *
+   * A modifier-click is left alone. Opening a link in a new tab or window is
+   * the browser's, not the app's, and it navigates nothing here.
+   */
+  onNavigate?: (item: ShelfItem) => boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const open = pinned || hovered;
@@ -73,7 +94,26 @@ export function Shelf({
         aria-label={label}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
-        onFocus={() => setHovered(true)}
+        /*
+          Focus opens the drawer for somebody tabbing through it, who has no
+          pointer to hover with and would otherwise be reading a column of
+          unlabelled icons.
+
+          It has to be *keyboard* focus, and that is not a detail. Focus also
+          arrives here without anybody asking: a modal returns it to whatever
+          opened it when it closes (overlay.tsx), so dismissing a dialog
+          launched from one of these links hands focus back to that link — and
+          the drawer would slide open with no pointer anywhere near it, and
+          nothing to ever fire `pointerleave` and close it again. It sat open
+          until the shelf was hovered and unhovered to clear it.
+
+          `:focus-visible` is exactly this distinction, already worked out by
+          the browser: focus restored after a mouse interaction does not match
+          it, focus that arrived by Tab does.
+        */
+        onFocus={(event) => {
+          if (byKeyboard(event.target)) setHovered(true);
+        }}
         onBlur={() => setHovered(false)}
         style={{ width: open ? DRAWER : RAIL }}
         className={`absolute inset-y-0 left-0 flex flex-col justify-between gap-4 overflow-hidden border-r p-2 transition-[width,background-color,border-color] duration-220 ease-out ${
@@ -89,7 +129,12 @@ export function Shelf({
         <ul className="flex flex-col gap-0.5" style={{ width: ROW_WIDTH }}>
           {top.map((item) => (
             <li key={item.href}>
-              <ShelfLink item={item} open={open} fallbackIcon={fallbackIcon} />
+              <ShelfLink
+                item={item}
+                open={open}
+                fallbackIcon={fallbackIcon}
+                onNavigate={onNavigate}
+              />
             </li>
           ))}
         </ul>
@@ -101,7 +146,12 @@ export function Shelf({
           >
             {bottom.map((item) => (
               <li key={item.href}>
-                <ShelfLink item={item} open={open} fallbackIcon={fallbackIcon} />
+                <ShelfLink
+                item={item}
+                open={open}
+                fallbackIcon={fallbackIcon}
+                onNavigate={onNavigate}
+              />
               </li>
             ))}
           </ul>
@@ -111,14 +161,37 @@ export function Shelf({
   );
 }
 
+/**
+ * Whether a focus landed on something because a person was navigating with the
+ * keyboard, as opposed to being handed there by the page.
+ *
+ * The whole of the judgement is the browser's. `:focus-visible` is the same
+ * rule it uses to decide whether to paint a focus ring, and it already knows
+ * what the last interaction was — asking it is both less code and more correct
+ * than tracking key presses here.
+ */
+function byKeyboard(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  try {
+    return target.matches(":focus-visible");
+  } catch {
+    // A browser that does not know the selector throws rather than answering
+    // false. Treating every focus as keyboard focus is what this replaced, so
+    // falling back to it costs nothing there and keeps the drawer reachable.
+    return true;
+  }
+}
+
 function ShelfLink({
   item,
   open,
   fallbackIcon,
+  onNavigate,
 }: {
   item: ShelfItem;
   open: boolean;
   fallbackIcon?: Icon;
+  onNavigate?: (item: ShelfItem) => boolean;
 }) {
   const pathname = usePathname();
   // Sub-routes count as the section being open — a section's tabs are pages of
@@ -126,17 +199,36 @@ function ShelfLink({
   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
   return (
-    <Link
-      href={item.href}
-      aria-current={active ? "page" : undefined}
-      title={open ? undefined : item.label}
-      className={`flex items-center gap-2.5 rounded-control px-2.5 py-2 text-sm transition-colors duration-120 ease-out ${
-        active ? "bg-tone-3 font-medium text-ink" : "text-ink-soft hover:bg-tone-2 hover:text-ink"
-      }`}
-    >
-      <ShelfGlyph icon={item.icon} active={active} fallbackIcon={fallbackIcon} />
-      <Label open={open}>{item.label}</Label>
-    </Link>
+    /*
+      No label on screen at all while the shelf is collapsed to a rail of
+      icons — `title={open ? undefined : item.label}` is doing real work
+      here, not decoration, which is exactly the case `Tooltip` exists for.
+      `side="right"` would be more at home on a rail down the left edge, but
+      this primitive only opens up or down — `bottom` is the safer of the two
+      against the shelf's own top edge.
+    */
+    <Tooltip label={open ? null : item.label} side="bottom" className="w-full">
+      <Link
+        href={item.href}
+        onClick={(event) => {
+          if (!onNavigate) return;
+          /*
+            Modifier-clicks are the browser's. Ctrl, ⌘, shift and a middle button
+            all mean "open this somewhere else", which navigates nothing here and
+            is not something an app should be asked to confirm.
+          */
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          if (onNavigate(item) === false) event.preventDefault();
+        }}
+        aria-current={active ? "page" : undefined}
+        className={`flex items-center gap-2.5 rounded-control px-2.5 py-2 text-sm transition-colors duration-120 ease-out ${
+          active ? "bg-tone-3 font-medium text-ink" : "text-ink-soft hover:bg-tone-2 hover:text-ink"
+        }`}
+      >
+        <ShelfGlyph icon={item.icon} active={active} fallbackIcon={fallbackIcon} />
+        <Label open={open}>{item.label}</Label>
+      </Link>
+    </Tooltip>
   );
 }
 

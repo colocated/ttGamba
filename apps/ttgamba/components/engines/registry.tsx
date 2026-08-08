@@ -17,6 +17,7 @@
 import type { GameRow, TableRow, TierRow } from "@/lib/casino";
 import type { EngineId } from "@/lib/engines";
 import { Bench } from "./bench";
+import { BlackjackTable } from "./blackjack";
 
 /**
  * What every engine is handed.
@@ -55,8 +56,24 @@ export type EngineProps = {
    * list somewhere else.
    */
   onTakeSeat: (position: number) => void;
-  /** Get up. Takes the player back to the lobby — or out of the game entirely. */
-  onLeave: () => void;
+  /**
+   * Get up.
+   *
+   * By default this is the whole way out: the seat is given up and the player
+   * lands back on the list of tables. `stay` gives up only the seat, leaving
+   * them watching the table they were sitting at.
+   *
+   * The distinction is the difference between "I am done here" and "I will sit
+   * this one out", and only the game knows which of those a player has asked
+   * for — a blackjack player passing a shoe wants the second one and would be
+   * thrown out of the room by the first.
+   *
+   * Standing up is not always allowed to happen *now*, and that is the
+   * engine's business rather than this call's: a game with a round in progress
+   * should hold the request until the round settles rather than pass it on
+   * mid-hand. Nothing here queues anything.
+   */
+  onLeave: (options?: { stay?: boolean }) => void;
   /** Ask the server where we are again, rather than waiting for the next poll. */
   reload: () => void;
   /** A `leave` is in flight. Buttons that would race it should be off. */
@@ -66,18 +83,52 @@ export type EngineProps = {
 export type EngineComponent = (props: EngineProps) => React.ReactNode;
 
 /**
- * ── Every engine is the bench for now ─────────────────────────────────────
+ * How much of the pane an engine draws.
+ *
+ * `stage` is the ordinary arrangement: the game page keeps its header — the
+ * title, the blurb, the seat tag — and the engine renders panels underneath it
+ * like every other page in the app.
+ *
+ * `felt` is a game that *is* the pane. It gets the whole of it, header
+ * included, because a table drawn under a page title reads as a widget on a
+ * page rather than as the thing the player is sitting at — and the ~90px that
+ * header costs is height a half-circle table cannot spare in a window whose
+ * short edge is 406px at its smallest. An engine that asks for this owes the
+ * player everything the header was carrying: which table this is, what it
+ * costs, and the way out.
+ *
+ * Only at a table. A lobby is a list of places to sit and always keeps its
+ * header, whichever engine is behind it.
+ */
+export type EngineSurface = "stage" | "felt";
+
+/**
+ * An engine, as the interface reaches it: what draws it, and how much room it
+ * is drawn in.
+ *
+ * A record rather than a bare component so that adding a surface later cannot
+ * be forgotten for one engine and remembered for another — every entry states
+ * both, and the type below makes an omission a compile error.
+ */
+export type EngineEntry = {
+  play: EngineComponent;
+  surface: EngineSurface;
+};
+
+/**
+ * ── The bench is what an engine looks like before it is written ───────────
  * `Bench` is not a placeholder in the "coming soon" sense — it is a working
  * view of everything the table layer actually provides: who is sitting where,
  * what the stakes are, and how much of the shoe is left. It is what lets the
- * plumbing be checked in game before there is a game to check it with.
+ * plumbing be checked in game before there is a game to check it with, and it
+ * is still what roulette and cross-the-road get.
  *
- * Building blackjack means writing `components/engines/blackjack.tsx` and
- * changing one line here. Nothing else in the app needs to know.
+ * Building a game means writing its component and changing one line here.
+ * Nothing else in the app needs to know.
  * ─────────────────────────────────────────────────────────────────────────
  */
-export const ENGINE_COMPONENTS: Record<EngineId, EngineComponent> = {
-  blackjack: Bench,
-  roulette: Bench,
-  "cross-the-road": Bench,
+export const ENGINE_COMPONENTS: Record<EngineId, EngineEntry> = {
+  blackjack: { play: BlackjackTable, surface: "felt" },
+  roulette: { play: Bench, surface: "stage" },
+  "cross-the-road": { play: Bench, surface: "stage" },
 };

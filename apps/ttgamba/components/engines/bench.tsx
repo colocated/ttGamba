@@ -91,7 +91,6 @@ export function Bench({ game, tier, table, seat, onTakeSeat, onLeave, busy }: En
                   <button
                     type="button"
                     onClick={() => onTakeSeat(position)}
-                    title={`Sit in seat ${position}`}
                     className={`${shape} w-full cursor-pointer transition-colors duration-120 ease-out hover:border-felt hover:bg-felt/10 hover:text-felt-hi`}
                   >
                     {body}
@@ -113,7 +112,13 @@ export function Bench({ game, tier, table, seat, onTakeSeat, onLeave, busy }: En
           <div className="flex items-center gap-2 border-t border-edge pt-3 text-sm text-ink-soft">
             <CardsIcon size={16} weight="fill" className="text-ink-muted" aria-hidden />
             <span className="font-mono tabular-nums">{table.cardsLeft}</span>
-            <span>cards left before the shoe is re-shuffled</span>
+            {/*
+              Cards in the shoe, not cards until the re-shuffle. The cut card
+              is randomised and hidden now — publishing the distance to it
+              would hand a counter the one thing that makes counting pay
+              (lib/shoe.ts).
+            */}
+            <span>cards left in the shoe</span>
           </div>
         ) : null}
       </Panel>
@@ -135,7 +140,13 @@ export function Bench({ game, tier, table, seat, onTakeSeat, onLeave, busy }: En
       </Panel>
 
       <div>
-        <Button onClick={onLeave} disabled={busy}>
+        {/*
+          Wrapped rather than passed straight through: `onLeave` now takes
+          options, and handing it to a click handler would feed it the mouse
+          event as its first argument. The bench has no opinion about staying
+          to watch, so it asks for the default — all the way out.
+        */}
+        <Button onClick={() => onLeave()} disabled={busy}>
           {watching ? "Back to the tables" : "Leave the table"}
         </Button>
       </div>

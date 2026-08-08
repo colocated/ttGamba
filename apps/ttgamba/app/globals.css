@@ -11,12 +11,479 @@
 @source "../../../packages/window/src";
 
 /*
-  Nothing is declared here, and that is the point worth writing down rather than
-  a file waiting to be filled in.
+  No token is restated here, and that is the point worth writing down rather
+  than a file waiting to be filled in.
 
   ttGamba is the app the window's defaults were drawn for, so felt green, chip
   gold and the 8px radius ceiling all arrive as they are. A second app that
   wants to look different restates any of those names in an `@theme` block
   below this line — Tailwind resolves whichever declaration comes last, and this
   file is after the import. See the workspace README.
+
+  What *is* below is the one thing that cannot come from @tt/window: the motion
+  of a card crossing a table. See DESIGN.md, "the game surface is exempt".
 */
+
+/*
+  ── The felt's motion ─────────────────────────────────────────────────────
+  Everything here belongs to the inside of a game's box and nothing here may
+  be used outside one. These run longer than DESIGN.md's ceiling and are
+  allowed to, because they depict a physical object moving a physical
+  distance: a card thrown from the shoe to the far seat of a blackjack table
+  takes about a third of a second in a casino, and at 120ms it reads as a
+  glitch rather than as a deal.
+
+  All four are written against the independent `translate` / `rotate` / `scale`
+  properties instead of `transform`. A card is *positioned* by its `left` and
+  `top` and *moved* by these, so the layout and the animation never have to
+  agree about a shared transform — and the flip underneath can use `transform`
+  for its `rotateY` without either one clobbering the other.
+
+  The per-card distances arrive as custom properties set inline, because every
+  card flies a different way: `--in-*` is the vector back to the shoe it came
+  from, `--out-*` the one to the discard slot it is swept into, and `--rest-r`
+  the angle it lies at once it has landed.
+*/
+
+@theme {
+  --animate-deal: deal var(--tt-deal-time) cubic-bezier(0.16, 0.72, 0.24, 1) both;
+  --animate-sweep: sweep var(--tt-sweep-time) cubic-bezier(0.5, 0, 0.85, 0.5) both;
+
+  /*
+    A card arriving face up turns over *in flight* rather than after landing —
+    which is both what a dealer's flick actually does and the only version that
+    fits inside the deal without adding a beat to every card. It stays face
+    down for the first fifth of the journey so the turn reads as a turn and not
+    as the card having always been face up.
+  */
+  --animate-turn-in: turn-in var(--tt-deal-time) ease-out both;
+  /*
+    A card turned over later — the dealer's hole card, at the end of a hand.
+    Its own keyframes rather than `turn-in` with a different duration: the
+    hold at the start would make the reveal look like a hesitation, and
+    reusing an animation-name never restarts it (see @tt/window's tokens.css,
+    which has the long version of that trap).
+  */
+  --animate-turn-over: turn-over var(--tt-turn-time) ease-out both;
+
+  @keyframes deal {
+    from {
+      translate: var(--in-x) var(--in-y);
+      rotate: var(--in-r, 0deg);
+      scale: 0.86;
+    }
+    to {
+      translate: 0 0;
+      rotate: var(--rest-r, 0deg);
+      scale: 1;
+    }
+  }
+
+  /*
+    The sweep runs on a *different element* from the deal — see ./card.tsx for
+    why — so it starts from nothing rather than from the card's resting angle.
+    The angle is already on the element underneath, and the two compose.
+  */
+  @keyframes sweep {
+    from {
+      translate: 0 0;
+      rotate: 0deg;
+      scale: 1;
+      opacity: 1;
+    }
+    to {
+      translate: var(--out-x) var(--out-y);
+      rotate: 22deg;
+      scale: 0.8;
+      opacity: 0;
+    }
+  }
+
+  @keyframes turn-in {
+    0%,
+    22% {
+      transform: rotateY(180deg);
+    }
+    100% {
+      transform: rotateY(0deg);
+    }
+  }
+
+  @keyframes turn-over {
+    from {
+      transform: rotateY(180deg);
+    }
+    to {
+      transform: rotateY(0deg);
+    }
+  }
+
+  /*
+    ── Settling up ───────────────────────────────────────────────────────────
+    Chips travelling between a betting circle and the house's tray. `--tray-x`
+    and `--tray-y` are the vector from that particular pile to the tray, set per
+    pile, so a chip at the far end of the arc takes the long way round and one
+    in front of the dealer barely moves.
+
+    Two directions and they are not mirror images. Chips going *to* the house
+    accelerate away and shrink — the dealer sweeps them, it is quick and it is
+    not about you. Chips coming *back* decelerate into the circle and land, in
+    the same easing the deal uses, because arriving somewhere deliberately is
+    what being paid looks like.
+  */
+  --animate-to-tray: to-tray 520ms cubic-bezier(0.55, 0, 0.85, 0.5) both;
+  --animate-from-tray: from-tray 460ms cubic-bezier(0.18, 0.72, 0.24, 1) both;
+
+  @keyframes to-tray {
+    from {
+      translate: 0 0;
+      opacity: 1;
+      scale: 1;
+    }
+    to {
+      translate: var(--tray-x) var(--tray-y);
+      opacity: 0;
+      scale: 0.7;
+    }
+  }
+
+  @keyframes from-tray {
+    from {
+      translate: var(--tray-x) var(--tray-y);
+      opacity: 0;
+      scale: 0.7;
+    }
+    60% {
+      opacity: 1;
+    }
+    to {
+      translate: 0 0;
+      opacity: 1;
+      scale: 1;
+    }
+  }
+
+  /*
+    The figure under a pile the house has just taken.
+
+    It cannot travel with its chips — a number sliding across the felt to the
+    dealer's tray is not a thing that happens — so it fades where it stands.
+    Held for the first third, so the chips get a clear start and the label is
+    still readable while they are on their way, then gone by the time they
+    arrive. Same 520ms as the chips themselves, so the pile finishes as one
+    thing rather than leaving a caption behind.
+  */
+  --animate-pile-out: pile-out 520ms ease-out both;
+
+  @keyframes pile-out {
+    0%,
+    32% {
+      opacity: 1;
+      scale: 1;
+    }
+    100% {
+      opacity: 0;
+      scale: 0.9;
+    }
+  }
+
+  /*
+    Everything that belongs to a hand, leaving with it.
+
+    The totals, the stake and the light around a settled seat all go as the
+    cards are swept, on the sweep's own duration so the table empties as one
+    movement rather than as cards flying off and their labels blinking out
+    afterwards. A shade of shrink with the fade, because these sit *on* the
+    felt and something lifting away is the same gesture the cards are making.
+  */
+  --animate-clear: clear-away var(--tt-sweep-time) ease-out both;
+
+  @keyframes clear-away {
+    from {
+      opacity: 1;
+      scale: 1;
+    }
+    to {
+      opacity: 0;
+      scale: 0.92;
+    }
+  }
+
+  /*
+    Chips being pushed onto the table.
+
+    They come in from off the bottom of the felt — the direction the player's
+    own hands are, and the only one that reads as *placing* a bet rather than a
+    stack appearing in a circle. `--drop` is how far, set per seat, because a
+    seat out at the end of the arc is much nearer the edge than the one facing
+    the dealer and a fixed distance would have some chips sliding in from
+    halfway up the table.
+
+    They also arrive slightly large and settle to size, which is what something
+    travelling towards you does.
+
+    Staggered by `animation-delay`, set per chip, so a stack of four is four
+    chips going down one after another rather than one thick chip. `both` is
+    load-bearing: without it every chip in the stack is drawn at full size in
+    its final position until its delay elapses, which is the whole stack
+    appearing instantly and then re-doing itself.
+  */
+  --animate-chip-land: chip-land 320ms cubic-bezier(0.18, 0.72, 0.24, 1) both;
+
+  @keyframes chip-land {
+    from {
+      opacity: 0;
+      translate: 0 var(--drop, 60cqw);
+      scale: 1.35;
+    }
+    60% {
+      opacity: 1;
+    }
+    to {
+      opacity: 1;
+      translate: 0 0;
+      scale: 1;
+    }
+  }
+
+  /*
+    A cancelled bet, going back the way it came.
+
+    `chip-land` played backwards would be the obvious way to say this and is
+    not what happens: reversing it would have the chips *arrive* large and
+    shrink into the felt, which is what something being placed looks like, not
+    what something being taken back looks like. This accelerates away and
+    shrinks instead — the same departure `to-tray` uses for chips the house is
+    sweeping up, because leaving the felt reads the same whichever direction
+    it happens in. Only the destination differs, and `--drop` already points
+    the right way: straight back down to the gutter these came from.
+
+    Same stagger as the arrival (`animation-delay`, set per chip in
+    ./hands.tsx), so a stack that landed one piece at a time leaves the same
+    way rather than departing as a single block.
+  */
+  --animate-chip-retreat: chip-retreat 280ms cubic-bezier(0.55, 0, 0.85, 0.5) both;
+
+  @keyframes chip-retreat {
+    from {
+      opacity: 1;
+      translate: 0 0;
+      scale: 1;
+    }
+    40% {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+      translate: 0 var(--drop, 60cqw);
+      scale: 0.82;
+    }
+  }
+
+  /*
+    ── The light around a settled seat ───────────────────────────────────────
+    Two layers over one another, both taking their colour from `--light` set
+    per seat, so the whole effect is one custom property away from any outcome.
+
+    `aura-pool` is the soft radial that says *where*: it swells once as the
+    round settles and then breathes, which is enough to read as lit rather than
+    as a coloured circle that switched on.
+
+    `aura-sweep` is the part that makes it look alive — a conic band turning
+    slowly behind the pool, so the light drifts round the seat instead of
+    sitting still. Slow on purpose. Anything quicker than this reads as a
+    warning light, and seven of them turning at once at the end of a round
+    would be a fairground.
+
+    Both are `screen`-blended so they add light to the felt rather than laying
+    paint over it, which is the difference between a glow and a sticker.
+  */
+  --animate-aura-pool: aura-pool 4.5s ease-in-out infinite;
+  --animate-aura-sweep: aura-sweep 9s linear infinite;
+
+  @keyframes aura-pool {
+    0%,
+    100% {
+      opacity: 0.5;
+      scale: 0.94;
+    }
+    50% {
+      opacity: 0.75;
+      scale: 1;
+    }
+  }
+
+  @keyframes aura-sweep {
+    from {
+      rotate: 0deg;
+    }
+    to {
+      rotate: 360deg;
+    }
+  }
+
+  /*
+    The verdict over the table. Arrives quickly, holds, and is gone — it is read
+    in the moment it lands and then it is in the way, so it takes itself off
+    rather than waiting for the next round to clear it.
+  */
+  --animate-verdict: verdict 2600ms ease-out both;
+
+  @keyframes verdict {
+    0% {
+      opacity: 0;
+      scale: 0.86;
+      translate: 0 12px;
+    }
+    12% {
+      opacity: 1;
+      scale: 1;
+      translate: 0 0;
+    }
+    78% {
+      opacity: 1;
+      scale: 1;
+      translate: 0 0;
+    }
+    100% {
+      opacity: 0;
+      scale: 1.04;
+      translate: 0 -10px;
+    }
+  }
+
+  /*
+    The dealer, breathing. Decoration, and the only thing on this table that
+    is — a figure that is perfectly still for a whole hand reads as a printed
+    backdrop rather than as somebody standing there. Small enough (a third of a
+    table unit) that it is felt rather than watched, and switched off outright
+    under reduced motion, which is what DESIGN.md asks of decoration.
+  */
+  @keyframes dealer-idle {
+    0%,
+    100% {
+      transform: translateX(-3px) rotate(-0.3deg);
+    }
+    50% {
+      transform: translateX(3px) rotate(0.3deg);
+    }
+  }
+}
+
+@layer base {
+  :root {
+    /* A card crossing the table, shoe to seat. */
+    --tt-deal-time: 380ms;
+    /* Turning one over on its own, once it is already lying there. */
+    --tt-turn-time: 300ms;
+    /* Sweeping a finished hand into the discard slot. Quicker: it is a clearance. */
+    --tt-sweep-time: 300ms;
+  }
+
+  /*
+    SVG needs both companions spelled out. `transform-box: fill-box` is what
+    makes the percentages and the origin resolve against the dealer's own
+    bounding box rather than the whole canvas — without it the figure swings
+    around the corner of the table.
+  */
+  .dealer-idle {
+    transform-box: fill-box;
+    transform-origin: 50% 92%;
+    animation: dealer-idle 7s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --tt-deal-time: 1ms;
+      --tt-turn-time: 1ms;
+      --tt-sweep-time: 1ms;
+    }
+
+    /*
+      Shortened, never removed, is the rule for anything load-bearing — the
+      deal above keeps its keyframes so a card still ends up face up and in
+      the right place. The dealer's sway carries no state at all, so it stops.
+    */
+    .dealer-idle {
+      animation: none;
+    }
+
+    /*
+      The light around a settled seat stays — it is what says who won — but it
+      stops moving. Both layers hold their first frame, which is a steady glow
+      in the outcome's colour rather than one that breathes and turns.
+
+      The verdict overlay is deliberately *not* here. Its fade is not
+      decoration: it is the only thing that takes it off the felt again, and an
+      animation that never runs would leave it sitting over the table forever.
+    */
+    .animate-aura-pool,
+    .animate-aura-sweep {
+      animation: none;
+    }
+  }
+}
+
+/*
+  ── When there is not enough window to play in ──────────────────────────────
+  The box a game is drawn in is a query container, and the felt inside it sizes
+  itself in `cqw` / `cqh` against exactly that element. So the question "is the
+  table big enough to be worth drawing" is asked in the same terms the table is
+  drawn in, with no measuring, no state, and nothing to be briefly wrong on the
+  first frame after a drag.
+
+  The two conditions are the two ways the felt can end up small: the box is
+  narrow, or the box is short and the felt's locked aspect ratio makes it
+  narrow. One threshold expressed twice — 800px of felt, and the box height
+  that yields 800px of felt at the table's 1.61 ratio.
+
+  800 is where a player's name on a seat drops under about ten pixels and a
+  card's rank stops being readable across the table. In window terms that is
+  roughly 880px wide; the window's own floor is 720, so the band this covers is
+  real but narrow, and the default window (1120) is nowhere near it. It is the
+  one number to move if that line turns out to be in the wrong place.
+
+  ── Why this block is in no layer at all ────────────────────────────────────
+  Because `.felt-roomy` has to beat a Tailwind display utility, and everything
+  Tailwind emits lives inside an `@layer`. Unlayered rules win over every layer
+  regardless of specificity, so this is the arrangement in which hiding an
+  element that also carries `contents` actually hides it. Inside `@layer base`
+  the utility would quietly win and the chrome bar would go on wrapping across
+  the dealer's head with nothing on screen to say why.
+
+  Deliberately tiny, and every name prefixed: three classes, none of them used
+  anywhere but inside a game's box.
+*/
+
+.felt-room {
+  /*
+    Named, so the query below cannot be captured by some other container that
+    happens to sit between it and the box — and `size` rather than
+    `inline-size` because the felt's width is derived from the box's *height*
+    as well as its width (components/engines/blackjack/index.tsx).
+  */
+  container: felt-room / size;
+}
+
+.felt-cramped {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease-out;
+}
+
+@container felt-room (width < 800px) or (height < 496px) {
+  .felt-cramped {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /*
+    Everything the chrome bar can do without at that size. `display: none`
+    rather than a narrower layout, because the alternative is a bar that wraps
+    onto a second line across the dealer's head — which reads as a broken page
+    rather than as a window that is short of room.
+  */
+  .felt-roomy {
+    display: none;
+  }
+}

@@ -35,6 +35,11 @@
 
 import type { Db } from "./audit";
 import { ANYONE, authorise, FORBIDDEN, readId, readName, type Caller } from "./auth";
+/*
+  The one thing this layer knows about a game's own state, and it is here
+  because a seat is released here. See lib/blackjack/settle.ts.
+*/
+import { reconcileSeats } from "./blackjack/settle";
 import { SEAT_TIMEOUT, type Place, type TableRow, type TierView } from "./casino";
 import { prisma } from "./db";
 import type { Outcome } from "./desk";
@@ -73,9 +78,25 @@ const MAX_TABLES = 20;
  * rows in it.
  */
 async function sweep(db: Db): Promise<void> {
-  await db.tableSeat.deleteMany({
-    where: { seenAt: { lt: new Date(Date.now() - SEAT_TIMEOUT) } },
+  /*
+    Which tables are about to lose somebody, read before they lose them —
+    afterwards there is no way to tell which tables were touched, and each of
+    them may be holding chips for the player being swept. One cutoff, computed
+    once, so the read and the delete cannot disagree about who was stale.
+  */
+  const cutoff = new Date(Date.now() - SEAT_TIMEOUT);
+  const going = await db.tableSeat.findMany({
+    where: { seenAt: { lt: cutoff } },
+    select: { tableId: true },
   });
+
+  await db.tableSeat.deleteMany({ where: { seenAt: { lt: cutoff } } });
+
+  // Before the shoe goes and before the table can be reaped — both of those
+  // are below, and a refund after either is a refund that never happens.
+  for (const tableId of new Set(going.map((seat) => seat.tableId))) {
+    await reconcileSeats(db, tableId);
+  }
 
   const empty = await db.table.findMany({
     where: { seats: { none: {} } },
@@ -482,7 +503,20 @@ async function seat(
             include: { tier: { include: { game: true } } },
           });
           const engine = findEngine(table.tier.game.engine);
-          await requestShoe(tx, tableId, engine?.decks ?? 0);
+          /*
+            The engine says whether this game takes cards at all; the tier says
+            how many decks go in when it does. Two layers because they are two
+            different kinds of fact — "blackjack is a card game" is true of the
+            code, and "this table plays a four-to-six deck shoe" is a decision
+            somebody made in the admin panel about these stakes.
+          */
+          await requestShoe(
+            tx,
+            tableId,
+            engine && engine.decks > 0
+              ? { min: table.tier.minDecks, max: table.tier.maxDecks }
+              : null,
+          );
           // No longer empty, so the reaper leaves it alone.
           await tx.table.update({ where: { id: tableId }, data: { emptiedAt: null } });
         }
@@ -510,7 +544,31 @@ export async function stand(caller: Caller): Promise<Outcome<null>> {
   const who = await authorise(caller, ANYONE);
   if (!who) return FORBIDDEN;
 
+  /*
+    Where they were sitting, read before the chair is given up — because the
+    table may be holding chips for them and afterwards there is nothing left to
+    say which table it was.
+  */
+  const seats = await prisma.tableSeat.findMany({
+    where: { vrpId: who.vrpId },
+    select: { tableId: true },
+  });
+
   await prisma.tableSeat.deleteMany({ where: { vrpId: who.vrpId } });
+
+  /*
+    ── The refund cannot wait for somebody to look ───────────────────────────
+    A round is only ever advanced, and departed players only ever refunded, by
+    somebody reading the table — and the person who just left is the person who
+    was reading it. Bet during the betting window, stand up before the deal, and
+    with nobody else at the table there is no next read: the chips were gone
+    from the balance and staked on a square belonging to nobody, and if the
+    table was then reaped they were gone for good.
+
+    Doing it here does not depend on an audience.
+  */
+  for (const seat of seats) await reconcileSeats(prisma, seat.tableId);
+
   await sweep(prisma);
 
   return { ok: true, data: null };
