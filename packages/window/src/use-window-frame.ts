@@ -286,6 +286,7 @@ export function useWindowFrame({
   const onDrag = (event: React.PointerEvent<HTMLElement>) => {
     const offset = grabOffset.current;
     if (!offset) return;
+    if (abandoned(event)) return endDrag(event);
 
     setOrigin({
       x: clamp(event.clientX - offset.x, 0, viewportWidth - width),
@@ -321,6 +322,7 @@ export function useWindowFrame({
   const onResize = (event: React.PointerEvent<HTMLElement>) => {
     const grab = resizeAnchor.current;
     if (!grab) return;
+    if (abandoned(event)) return endResize(event);
 
     const { corner, point: anchor } = grab;
     const west = corner.includes("w");
@@ -411,12 +413,30 @@ export function useWindowFrame({
     /** False until stored settings have been read — dim the controls until then. */
     ready,
     onAnimationEnd,
+    /*
+      `onLostPointerCapture` on both, and it is not belt and braces.
+
+      A gesture is remembered in a ref and read on every pointer move, so the
+      only thing standing between "drag finished" and "every future move over
+      this element drags the window" is the end handler having run. `pointerup`
+      is not enough on its own: capture can be taken away — the element
+      re-rendering, the browser stepping in, a device event — and when it is,
+      the release fires *instead of* the up, on the element that lost it. The
+      ref then survives a gesture that is over, and the window starts jumping
+      to the pointer on hover with no button held.
+
+      A resize grip is the version of that a player actually hits. It only has
+      to lose capture once, and afterwards passing the corner on the way to
+      anywhere resizes the window from a stale anchor — which lands it at
+      `minWidth` if the pointer is anywhere near where the gesture began.
+    */
     /** Spread onto the draggable titlebar. */
     titlebar: {
       onPointerDown: startDrag,
       onPointerMove: onDrag,
       onPointerUp: endDrag,
       onPointerCancel: endDrag,
+      onLostPointerCapture: endDrag,
     },
     /** Spread onto each corner grip. */
     grip: (corner: WindowCorner) => ({
@@ -424,6 +444,7 @@ export function useWindowFrame({
       onPointerMove: onResize,
       onPointerUp: endResize,
       onPointerCancel: endResize,
+      onLostPointerCapture: endResize,
     }),
     restore,
     minimise,
@@ -452,6 +473,24 @@ function useViewport(): [number, number] {
   if (!size) return [Infinity, Infinity];
   const [w, h] = size.split("x");
   return [Number(w), Number(h)];
+}
+
+/**
+ * Whether a move belongs to a gesture that is already over.
+ *
+ * `buttons` is a bitmask of what is held down *now*, so zero during a move
+ * means the button came up somewhere we never heard about — the classic one
+ * being a release outside the game viewport. The ref alone cannot tell: it
+ * still holds the anchor from a gesture nobody ended, and every subsequent
+ * hover reads it as a drag in progress.
+ *
+ * Checked on the move rather than fixed with a `pointerup` listener on the
+ * window, because this is the event that would act on the stale anchor. It
+ * cannot be wrong about a live gesture either: a drag with no button down is
+ * not a drag.
+ */
+function abandoned(event: React.PointerEvent<HTMLElement>): boolean {
+  return event.buttons === 0;
 }
 
 function releaseCapture(event: React.PointerEvent<HTMLElement>) {
