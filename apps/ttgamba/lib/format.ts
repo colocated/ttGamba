@@ -41,14 +41,50 @@ export function formatChipCount(amount: number): string {
  * lobby card's bet limits, which are two figures side by side inside a box a
  * couple of hundred pixels wide.
  *
- * It rounds, so it is never the last word on an amount: anywhere this is used,
- * the exact figure has to be reachable — a `title` beside it, or the table
- * itself once the player has sat down.
+ * It is never the last word on an amount: anywhere this is used, the exact
+ * figure has to be reachable — a `Tooltip` beside it, or the table itself once
+ * the player has sat down.
+ *
+ * ── Truncated, never rounded ───────────────────────────────────────────────
+ * `Intl`'s own compact notation rounds to the nearest tenth, which read
+ * `7,979,440,123` chips as `8B` — a player with 7.9-and-a-bit billion being
+ * shown a figure they do not have. That is the one direction this must never
+ * be wrong in: a shortened balance that undersells the truth is a rounding
+ * error, and one that oversells it is a player working out mid-bet that the
+ * app told them they could afford something they could not.
+ *
+ * So this floors instead, in `bigint` rather than `Intl`'s own arithmetic —
+ * a chip count is always a whole number, and doing the division in floating
+ * point would truncate the *right* way almost always and the wrong way on
+ * whichever amount happened to land a float's width short of the boundary,
+ * which is a worse bug than the one this replaced because it would show up
+ * once in a thousand tables instead of every time.
+ *
+ * `BigInt(1_000)` rather than the `1_000n` literal form throughout — this
+ * app's build targets ES2017, and the literal syntax is ES2020 even though
+ * the type and the constructor call are both fine at any target.
  */
-const SHORT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+const TEN = BigInt(10);
+
+const MAGNITUDES = [
+  { chips: BigInt(1_000_000_000_000), suffix: "T" },
+  { chips: BigInt(1_000_000_000), suffix: "B" },
+  { chips: BigInt(1_000_000), suffix: "M" },
+  { chips: BigInt(1_000), suffix: "K" },
+] as const;
 
 export function formatChipsShort(amount: number): string {
-  return SHORT.format(Math.trunc(amount));
+  const whole = Math.trunc(amount);
+  const magnitude = BigInt(Math.abs(whole));
+  const tier = MAGNITUDES.find((entry) => magnitude >= entry.chips);
+  if (!tier) return DECIMAL.format(whole);
+
+  // Tenths of the unit, floored by integer division rather than rounded.
+  const tenths = (magnitude * TEN) / tier.chips;
+  const remainder = tenths % TEN;
+  const figure = remainder === BigInt(0) ? `${tenths / TEN}` : `${tenths / TEN}.${remainder}`;
+
+  return `${whole < 0 ? "-" : ""}${figure}${tier.suffix}`;
 }
 
 /**
@@ -102,7 +138,7 @@ export function formatWhen(at: number): string {
   return WHEN.format(at);
 }
 
-/** The unabbreviated version, for a `title` on anything shortened. */
+/** The unabbreviated version, for a `Tooltip` on anything shortened. */
 export function formatExactly(at: number): string {
   return EXACT.format(at);
 }
