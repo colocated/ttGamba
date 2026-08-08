@@ -3,6 +3,9 @@ import { Panel, Stage } from "@/components/stage";
 import { prisma } from "@/lib/db";
 import { toGameRow } from "@/lib/rows";
 
+/** Every game is live state — a build-time prerender has no database to read. */
+export const dynamic = "force-dynamic";
+
 /**
  * One game.
  *
