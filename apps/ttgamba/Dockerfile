@@ -37,6 +37,14 @@ FROM base AS build
 # id is still unique, just anonymous. See packages/window/src/next-config.ts.
 ARG BUILD_COMMIT=nogit
 ENV BUILD_COMMIT=$BUILD_COMMIT
+# `lib/db.ts` builds its Prisma singleton at module scope, so merely importing
+# it — which `next build` does for every route, /play/[slug] included — throws
+# without a URL, real database or not. This placeholder is never opened: the
+# route that imports it is `force-dynamic` (see that page), so nothing queries
+# it before the container is thrown away. Same shape as `.env.example`'s
+# `DATABASE_URL`, deliberately — the real one is runtime-only (see
+# DEPLOYMENT.md) and never belongs in this layer.
+ENV DATABASE_URL=file:./build-placeholder.db
 # The whole installed tree, symlinks and all — pnpm's node_modules is a graph of
 # them and copying the directories individually would break it.
 COPY --from=deps /repo ./
