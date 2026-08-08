@@ -19,7 +19,7 @@ jobs:
   #
   # Adding an app is two edits: a filter here, and its own Dockerfile.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-4
     outputs:
       apps: ${{ steps.filter.outputs.changes }}
     steps:
@@ -38,7 +38,7 @@ jobs:
   build:
     needs: changes
     if: needs.changes.outputs.apps != '[]'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-4
     permissions:
       contents: read
       packages: write
