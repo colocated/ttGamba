@@ -3,16 +3,15 @@ import "server-only";
 /**
  * ttGamba's database handle.
  *
- * The plumbing — URL and token resolution, the libSQL adapter, one client per
- * process, the Redis cache extension — is `@tt/db`. What stays here is what
- * cannot be shared: `PrismaClient` is generated from this app's schema, so
- * `prisma` below is typed against this app's models alone.
+ * The plumbing — URL resolution, the Postgres adapter, one client per process,
+ * the Redis cache extension — is `@tt/db`. What stays here is what cannot be
+ * shared: `PrismaClient` is generated from this app's schema, so `prisma`
+ * below is typed against this app's models alone.
  *
- * See DEPLOYMENT.md for where the variables come from, and how the schema
- * reaches Turso (which is not `prisma migrate deploy`).
+ * See DEPLOYMENT.md for where `DATABASE_URL` comes from in each environment.
  */
 
-import { createPrismaSingleton, libsqlAdapter } from "@tt/db";
+import { createPrismaSingleton, pgAdapter } from "@tt/db";
 import { redisCache } from "@tt/db/cache";
 
 import { PrismaClient } from "./generated/prisma/client";
@@ -64,5 +63,5 @@ const cache = redisCache({
 });
 
 export const prisma = createPrismaSingleton(() =>
-  new PrismaClient({ adapter: libsqlAdapter() }).$extends(cache),
+  new PrismaClient({ adapter: pgAdapter() }).$extends(cache),
 );

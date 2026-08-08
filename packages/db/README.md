@@ -1,17 +1,17 @@
 # @tt/db
 
-Turso/libSQL wiring for a user app: connection config, one client per process,
-and the migration deployer. **No schema, no models, no generated client** —
-those belong to the app and cannot be anywhere else.
+Postgres wiring for a user app: connection config and one client per process.
+**No schema, no models, no generated client** — those belong to the app and
+cannot be anywhere else.
 
 ```ts
 // apps/<app>/lib/db.ts — the whole file
 import "server-only";
-import { createPrismaSingleton, libsqlAdapter } from "@tt/db";
+import { createPrismaSingleton, pgAdapter } from "@tt/db";
 import { PrismaClient } from "./generated/prisma/client";
 
 export const prisma = createPrismaSingleton(
-  () => new PrismaClient({ adapter: libsqlAdapter() }),
+  () => new PrismaClient({ adapter: pgAdapter() }),
 );
 ```
 
@@ -57,7 +57,7 @@ model by hand — and purges a model's keys when a write to it succeeds.
 
 ```ts
 export const prisma = createPrismaSingleton(() =>
-  new PrismaClient({ adapter: libsqlAdapter() }).$extends(
+  new PrismaClient({ adapter: pgAdapter() }).$extends(
     redisCache({
       prefix: "myapp",
       models: [
@@ -122,29 +122,16 @@ game state are the latter, and belong nowhere near this.
 
 | | |
 | --- | --- |
-| `@tt/db` | `createPrismaSingleton`, `libsqlAdapter`, `libsqlConfig`. `server-only`. |
+| `@tt/db` | `createPrismaSingleton`, `pgAdapter`, `databaseUrl`. `server-only`. |
 | `@tt/db/cache` | `redisCache()` — the Redis query cache extension. `server-only`. |
-| `@tt/db/env` | URL and token resolution. Plain JS, no `server-only` — the deployer uses it too. |
-| `@tt/db/migrate` | `deployMigrations({ migrationsDir })`. |
+| `@tt/db/env` | `databaseUrl()`. Plain JS, no `server-only` — `prisma.config.ts` reads it from a bare Node process. |
 | `@tt/db/prisma-config` | `userAppPrismaConfig()` for the Prisma CLI. |
-| `tt-db-deploy` | Bin wrapper around `deployMigrations`. Run from an app directory. |
 
-The `.mjs` files are plain JavaScript with JSDoc types on purpose: deploying
-must not depend on a TypeScript runner being installed wherever it happens.
+`env.mjs` is plain JavaScript with JSDoc types on purpose: the Prisma CLI runs
+it before anything TypeScript has touched.
 
-## Two things that will bite
-
-**The Prisma CLI must never see the Turso URL.** The schema engine only speaks
-`file:` and rejects `libsql://` outright, so `prisma.config.ts` reads
-`DATABASE_URL` alone while the *app* reads `TURSO_DATABASE_URL` first. Resolving
-both the same way works perfectly until someone has Turso credentials in their
-environment, and then `prisma migrate dev` stops working for a reason that has
-nothing to do with what they were doing. `cliDatabaseUrl` vs `databaseUrl` in
-`env.mjs` is that split.
-
-**`prisma migrate deploy` cannot reach Turso**, for the same reason. Migrations
-are *authored* against the local file with `prisma migrate dev` and *shipped*
-with `tt-db-deploy`, which replays the same SQL in the same order and writes the
-same `_prisma_migrations` rows with the same sha256 checksums — so the result is
-a database `prisma migrate status` still recognises. It refuses to run if an
-applied migration's checksum has changed, or if a previous run died mid-flight.
+Deploying migrations is `prisma migrate deploy` — the ordinary Prisma command,
+against `DATABASE_URL`, no wrapper needed. That is not a given: it is what
+Turso could not do, because its schema engine only spoke `file:` and rejected
+`libsql://` outright. Postgres's own protocol is what the schema engine
+already speaks, so nothing here stands between the CLI and the database.

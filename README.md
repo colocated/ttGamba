@@ -8,7 +8,7 @@ apps/
 packages/
   userapp/          @tt/userapp — the game client bridge. No React components.
   window/           @tt/window  — the floating window, its chrome and its tokens.
-  db/               @tt/db      — Turso wiring, Redis caching, migrations. No schema.
+  db/               @tt/db      — Postgres wiring, Redis caching. No schema.
 ```
 
 ```sh
@@ -59,11 +59,10 @@ shelf, the modal host, the boot script, and the design tokens. Every app is
 handed the whole game viewport and none of them may fill it, so this is shared
 for the same reason the protocol is: it is the same problem each time.
 
-**`@tt/db`** is how an app reaches Turso: URL and token resolution, the libSQL
-driver adapter, one client per process across dev's hot reload, optional Redis
-query caching, and the migration deployer that exists because `prisma migrate
-deploy` cannot speak `libsql://`. All of that is identical in every app, and
-none of it knows anything about a schema.
+**`@tt/db`** is how an app reaches Postgres: URL resolution, the driver
+adapter, one client per process across dev's hot reload, and optional Redis
+query caching. All of that is identical in every app, and none of it knows
+anything about a schema.
 
 It deliberately does **not** hold a Prisma client. `prisma generate` builds one
 from a single schema into the app that owns it, so its type cannot live in a

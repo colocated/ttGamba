@@ -5,11 +5,11 @@ import "server-only";
  *
  * ```ts
  * import "server-only";
- * import { createPrismaSingleton, libsqlAdapter } from "@tt/db";
+ * import { createPrismaSingleton, pgAdapter } from "@tt/db";
  * import { PrismaClient } from "./generated/prisma/client";
  *
  * export const prisma = createPrismaSingleton(
- *   () => new PrismaClient({ adapter: libsqlAdapter() }),
+ *   () => new PrismaClient({ adapter: pgAdapter() }),
  * );
  * ```
  *
@@ -25,21 +25,24 @@ import "server-only";
  * soft delete — goes inside the factory and keeps its types.
  */
 
-import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-import { libsqlConfig } from "./env.mjs";
+import { databaseUrl } from "./env.mjs";
 import { devSingleton } from "./singleton";
 
-export { databaseUrl, libsqlConfig } from "./env.mjs";
+export { databaseUrl } from "./env.mjs";
 
 /**
- * A Prisma driver adapter pointed at whatever the environment describes.
+ * A Prisma driver adapter pointed at whatever `DATABASE_URL` describes.
  *
  * Prisma 7 ships no query engine binary and cannot reach a database without an
- * adapter, so `new PrismaClient()` on its own will not work.
+ * adapter, so `new PrismaClient()` on its own will not work. Construction is
+ * lazy — `pg`'s `Pool` does not open a connection until the first query — so
+ * this is safe to call with a URL nobody intends to be reachable, which is
+ * exactly what the Docker build stage does (see apps/ttgamba/Dockerfile).
  */
-export function libsqlAdapter(): PrismaLibSql {
-  return new PrismaLibSql(libsqlConfig());
+export function pgAdapter(): PrismaPg {
+  return new PrismaPg({ connectionString: databaseUrl() });
 }
 
 /**

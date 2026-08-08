@@ -1,11 +1,10 @@
 // ttGamba's database.
 //
-// The provider is `sqlite` because Turso *is* SQLite — libSQL is a fork of it,
-// and the schema engine talks the same dialect. What Turso is not is reachable
-// by that engine: it only speaks `file:`, so `libsql://` URLs are rejected
-// outright. Migrations are therefore authored here against the local dev file
-// and shipped to Turso as SQL with `pnpm db:deploy`. See lib/db.ts, DEPLOYMENT.md,
-// and packages/db for the machinery all of that is shared through.
+// Postgres, self-hosted alongside the app rather than reached over the network
+// to Turso — see DEPLOYMENT.md for why. `prisma migrate deploy` works against
+// it directly, unlike Turso's `libsql://`, so there is no shipped-as-raw-SQL
+// deployer here the way there used to be. See lib/db.ts and packages/db for
+// the connection machinery.
 
 generator client {
   provider = "prisma-client"
@@ -13,7 +12,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 /// Gates what the app will show. Every player is a `player` until someone
@@ -83,9 +82,9 @@ model Balance {
   ///
   /// `BigInt`, not `Int`, and this is the reason: Prisma's `Int` is a 32-bit
   /// signed integer, which stops at 2,147,483,647 — and this server's high
-  /// rollers bet in billions. SQLite's own `INTEGER` was always 64 bits, so
-  /// the ceiling was never the database's. What changes is the type Prisma
-  /// hands back, and lib/rows.ts is where that becomes a `number` again. See
+  /// rollers bet in billions. Postgres's `bigint` is 64 bits, so the ceiling
+  /// was never the database's. What changes is the type Prisma hands back,
+  /// and lib/rows.ts is where that becomes a `number` again. See
   /// `AMOUNT_LIMIT` in lib/desk.ts for why that last step is safe.
   chips BigInt @default(0)
 

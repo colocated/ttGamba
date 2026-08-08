@@ -77,41 +77,15 @@ await cp(path.join(app, ".next", "static"), path.join(inside, ".next", "static")
   force: true,
 });
 
-/**
- * A relative `file:` database URL, made absolute against the app directory.
- *
- * ── Why this is necessary ─────────────────────────────────────────────────
- * `server.js` starts with `process.chdir(__dirname)`, so a standalone server
- * always runs from `.next/standalone/<app>` no matter what it was launched
- * with. Next's output tracing also copies `.env` into that directory, so
- * `DATABASE_URL="file:./dev.db"` is found and loaded — and then resolves
- * beside `server.js` rather than beside the app.
- *
- * SQLite creates a database that is not there, so nothing fails at connect
- * time. What you get instead is an empty file and
- * `SQLITE_ERROR: no such table: main.User` on the first query.
- *
- * Only development is affected: a container has no `.env` (see .dockerignore)
- * and points at Turso over the network, where there is no path to resolve.
- * ─────────────────────────────────────────────────────────────────────────
- */
-function absoluteFileUrl(value, from) {
-  if (!value?.startsWith("file:")) return value;
-
-  const target = value.slice("file:".length);
-  return path.isAbsolute(target) ? value : `file:${path.resolve(from, target)}`;
-}
-
 // The shell wins over `.env`, which is the precedence every other tool uses.
-const shell = { DATABASE_URL: process.env.DATABASE_URL, TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL };
+const shell = { DATABASE_URL: process.env.DATABASE_URL };
 try {
   process.loadEnvFile(path.join(app, ".env"));
 } catch {
   // No `.env`, which is normal anywhere the environment is supplied directly.
 }
 
-const database = absoluteFileUrl(shell.DATABASE_URL ?? process.env.DATABASE_URL, app);
-const turso = shell.TURSO_DATABASE_URL ?? process.env.TURSO_DATABASE_URL;
+const database = shell.DATABASE_URL ?? process.env.DATABASE_URL;
 
 /*
   Who is serving, so the next build can stop them.
@@ -149,7 +123,6 @@ const child = spawn(process.execPath, [server, ...process.argv.slice(2)], {
   env: {
     ...process.env,
     ...(database ? { DATABASE_URL: database } : {}),
-    ...(turso ? { TURSO_DATABASE_URL: turso } : {}),
     // `server.js` reads both, and defaults to localhost — which a game client on
     // another machine on the LAN cannot reach.
     PORT: process.env.PORT ?? "3000",

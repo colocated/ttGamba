@@ -32,16 +32,16 @@ work on layout.
 
 ## Database
 
-The store is [Turso](https://tur.so) in production and a local SQLite file in
-development. Turso is libSQL, which is SQLite, so both ends are the same
-database engine reached two different ways — one `@libsql/client` covers both
-and nothing in the app branches on which is in use.
+The store is Postgres, both in production and in development — self-hosted
+alongside the app rather than reached over the network to a managed service,
+which is what makes it worth being the same engine on both ends: `DATABASE_URL`
+is the one variable either side reads, and there is no split between what the
+app connects with and what the Prisma CLI does.
 
-Copy `.env.example` to `.env` and you have a working `dev.db` — nothing else to
-set up locally. Production configuration and the Turso deployment procedure are
-in **[DEPLOYMENT.md](DEPLOYMENT.md)**, along with why `prisma migrate deploy`
-cannot be used and where this project deliberately departs from Turso's
-published Prisma guide.
+Local development needs a real Postgres reachable at whatever `.env`'s
+`DATABASE_URL` names — `.env.example` has a one-line `docker run` for a
+throwaway one. Production configuration and the deployment procedure are in
+**[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
 ### Changing the schema
 
@@ -51,12 +51,12 @@ Edit `prisma/schema.prisma`, then:
 pnpm db:migrate --name what_changed
 ```
 
-That writes a migration to `prisma/migrations/` and applies it to `dev.db`.
-Commit the migration as well as the schema — it is the thing that gets
-deployed. `pnpm db:studio` opens a browser UI over the same file if you want to
-poke at rows by hand — which is currently also how you make someone a banker,
-since nothing in the app changes a role. From the repository root that one is
-`pnpm db ttgamba`.
+That writes a migration to `prisma/migrations/` and applies it to whatever
+`DATABASE_URL` points at locally. Commit the migration as well as the schema —
+it is the thing that gets deployed. `pnpm db:studio` opens a browser UI over
+the same database if you want to poke at rows by hand — which is currently
+also how you make someone a banker, since nothing in the app changes a role.
+From the repository root that one is `pnpm db ttgamba`.
 
 It does **not** regenerate the client. With this project's config, `prisma
 migrate dev` applies the SQL and stops, so `lib/generated/prisma` still

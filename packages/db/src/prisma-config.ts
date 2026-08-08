@@ -13,8 +13,6 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
-import { cliDatabaseUrl } from "./env.mjs";
-
 /**
  * An app's `prisma.config.ts` in one line:
  *
@@ -23,9 +21,11 @@ import { cliDatabaseUrl } from "./env.mjs";
  * export default userAppPrismaConfig();
  * ```
  *
- * The datasource is `DATABASE_URL` and deliberately never Turso —
- * `cliDatabaseUrl` explains why at length, and it is the kind of thing that
- * breaks on someone else's machine rather than yours.
+ * Reads `DATABASE_URL` directly rather than through `env.mjs`'s `databaseUrl`
+ * — that one throws when it is unset, which is right for the app but wrong
+ * here: `prisma generate` needs no database at all, and should keep working
+ * without one rather than fail for a reason that has nothing to do with what
+ * someone is doing.
  */
 export function userAppPrismaConfig(
   overrides: Partial<Parameters<typeof defineConfig>[0]> = {},
@@ -33,7 +33,7 @@ export function userAppPrismaConfig(
   return defineConfig({
     schema: "prisma/schema.prisma",
     migrations: { path: "prisma/migrations" },
-    datasource: { url: cliDatabaseUrl() },
+    datasource: { url: process.env.DATABASE_URL },
     ...overrides,
   });
 }

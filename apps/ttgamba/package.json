@@ -9,14 +9,13 @@
     "lint": "eslint",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:deploy": "tt-db-deploy",
+    "db:deploy": "prisma migrate deploy",
     "postinstall": "prisma generate",
     "serve": "tt-serve"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.4",
     "@phosphor-icons/react": "^2.1.10",
-    "@prisma/adapter-libsql": "^7.9.1",
+    "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@tt/db": "workspace:*",
     "@tt/userapp": "workspace:*",
