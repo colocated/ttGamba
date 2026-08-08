@@ -30,6 +30,7 @@ import { useEffect, useState } from "react";
 import { ArrowClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowClockwise";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
 
+import { Tooltip } from "@tt/window";
 import { Panel, Tag } from "@/components/stage";
 import { Empty } from "@/components/banker/ui";
 import { Drawer } from "@/components/settings/fields";
@@ -142,7 +143,10 @@ export function GameDataTable() {
               "Nothing received yet"
             ) : (
               <>
-                Last message <Since at={at} now={now} />
+                Last message{" "}
+                <Tooltip label={formatExactly(at)}>
+                  <Since at={at} now={now} />
+                </Tooltip>
               </>
             )}
           </span>
@@ -160,15 +164,16 @@ export function GameDataTable() {
             />
           </div>
 
-          <button
-            type="button"
-            onClick={() => getData()}
-            title="Ask the client to re-send its whole cache"
-            className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-control border border-edge bg-tone-2 px-2.5 py-2 text-xs text-ink-soft transition-colors duration-120 ease-out hover:bg-raised-hover hover:text-ink"
-          >
-            <ArrowClockwiseIcon size={14} aria-hidden />
-            Refresh
-          </button>
+          <Tooltip label="Ask the client to re-send its whole cache">
+            <button
+              type="button"
+              onClick={() => getData()}
+              className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-control border border-edge bg-tone-2 px-2.5 py-2 text-xs text-ink-soft transition-colors duration-120 ease-out hover:bg-raised-hover hover:text-ink"
+            >
+              <ArrowClockwiseIcon size={14} aria-hidden />
+              Refresh
+            </button>
+          </Tooltip>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -256,9 +261,10 @@ export function GameDataTable() {
 
               return (
                 <li key={key} className="flex items-baseline gap-3">
-                  <span className="w-44 shrink-0 truncate font-mono text-xs text-ink-muted" title={key}>
-                    {key}
-                  </span>
+                  {/* The tooltip is the full key, for the one that's too long for `w-44`. */}
+                  <Tooltip label={key} className="shrink-0">
+                    <span className="w-44 truncate font-mono text-xs text-ink-muted">{key}</span>
+                  </Tooltip>
                   <span className="min-w-0 flex-1 text-xs text-ink-muted">{doc?.blurb}</span>
                 </li>
               );
@@ -305,11 +311,16 @@ function Row({
         className="flex w-full cursor-pointer flex-col gap-1 px-4 py-2 text-left transition-colors duration-120 ease-out hover:bg-tone-2"
       >
         <span className="flex w-full items-start gap-3">
+          {/*
+            No `Tooltip` for the truncated name — this sits inside the row's
+            own expand button, and a nested focusable element inside a
+            `<button>` is invalid content a browser may not even let Tab
+            reach. Pressing the row is what reveals the rest of it.
+          */}
           <span
             className={`w-44 shrink-0 truncate font-mono text-xs ${
               fresh ? "text-felt-hi" : "text-ink-soft"
             }`}
-            title={name}
           >
             {name}
           </span>
@@ -359,6 +370,12 @@ function Row({
  * which is the right answer for a queue of requests and the wrong one here —
  * the whole question this column answers is which of these moved in the last few
  * seconds.
+ *
+ * No `Tooltip` baked in here, unlike `formatExactly`'s other use in
+ * `banker/ui.tsx`'s `When` — this is used once loose in the header and once
+ * inside `Row`'s own toggle button, and only the first of those can safely
+ * carry one (see `Row`). The header wraps this in a `Tooltip` itself; the row
+ * does not.
  */
 function Since({ at, now, fresh }: { at: number; now: number; fresh?: boolean }) {
   const seconds = Math.max(0, Math.round((now - at) / 1000));
@@ -372,11 +389,7 @@ function Since({ at, now, fresh }: { at: number; now: number; fresh?: boolean })
           : `${Math.floor(seconds / 3600)}h ago`;
 
   return (
-    <time
-      dateTime={new Date(at).toISOString()}
-      title={formatExactly(at)}
-      className={fresh ? "text-felt-hi" : undefined}
-    >
+    <time dateTime={new Date(at).toISOString()} className={fresh ? "text-felt-hi" : undefined}>
       {reading}
     </time>
   );

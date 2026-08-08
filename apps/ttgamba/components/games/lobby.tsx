@@ -43,7 +43,7 @@ import { PokerChipIcon } from "@phosphor-icons/react/dist/csr/PokerChip";
 import { Panel } from "@/components/stage";
 import type { TableRow, TierRow, TierView } from "@/lib/casino";
 import type { Engine } from "@/lib/engines";
-import { formatChipCount, formatChipsShort } from "@/lib/format";
+import { formatChipsShort } from "@/lib/format";
 
 /**
  * The card, as a surface.
@@ -133,15 +133,15 @@ function Seats({ taken, seats }: { taken: number; seats: number }) {
  * the one thing on the card in the currency colour.
  *
  * Shortened, because two full figures with their separators do not fit across a
- * card and would wrap into a second line of digits. The exact pair is on the
- * `title`, and the table states its limits again once somebody is at it.
+ * card and would wrap into a second line of digits. No `Tooltip` for the exact
+ * pair — every use of this sits inside the card's own button, and a second
+ * focusable, hoverable thing nested inside one interactive control is a worse
+ * trade than the precision. The table states its limits again once somebody is
+ * actually sat at it, which is the one place the exact figure has to be exact.
  */
 function Limits({ tier }: { tier: TierRow }) {
   return (
-    <span
-      title={`${formatChipCount(tier.minBet)} – ${formatChipCount(tier.maxBet)} chips a bet`}
-      className="flex items-baseline gap-1.5 font-mono text-sm tabular-nums text-chip"
-    >
+    <span className="flex items-baseline gap-1.5 font-mono text-sm tabular-nums text-chip">
       <PokerChipIcon size={13} weight="fill" className="translate-y-px" aria-hidden />
       {formatChipsShort(tier.minBet)} – {formatChipsShort(tier.maxBet)}
       <span className="font-sans text-[11px] text-ink-muted">a bet</span>
@@ -299,7 +299,6 @@ function TableCard({
       type="button"
       onClick={onSit}
       disabled={busy}
-      title={full ? `Watch ${tier.name} ${table.number}` : `Open ${tier.name} ${table.number}`}
       className={`${CARD} ${busy ? "cursor-not-allowed" : LIVE}`}
     >
       <Head
@@ -310,12 +309,16 @@ function TableCard({
             Worth saying which tables are here because the others filled up: it
             answers "why is there suddenly a table 4", and it is the one that
             goes away again when the table empties.
+
+            No `Tooltip` — this sits inside the card's own button, and a
+            second focusable, hoverable thing nested inside one interactive
+            control is a worse trade than the badge staying a plain label.
+            "Extra" is short on explanation on its own, but the card it sits
+            on is a single press either way, so there is nothing this could
+            tell a player that changes what pressing it does.
           */
           table.overflow ? (
-            <span
-              title="Opened because the others filled up"
-              className="w-fit rounded-chip border border-edge bg-tone-2 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ink-muted"
-            >
+            <span className="w-fit rounded-chip border border-edge bg-tone-2 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ink-muted">
               Extra
             </span>
           ) : undefined
@@ -346,7 +349,6 @@ function StakeCard({ tier, onSit, busy }: { tier: TierRow; onSit: () => void; bu
       type="button"
       onClick={onSit}
       disabled={busy}
-      title={`Start a table at ${tier.name}`}
       className={`${CARD} ${busy ? "cursor-not-allowed" : LIVE}`}
     >
       <Head

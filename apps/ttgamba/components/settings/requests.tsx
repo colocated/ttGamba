@@ -20,7 +20,7 @@
 
 import { useId, useLayoutEffect, useRef, useState } from "react";
 
-import { CloseButton, Overlay, useClose } from "@tt/window";
+import { CloseButton, Overlay, Tooltip, useClose } from "@tt/window";
 import { Button, ChipAmount, Empty, Problem, StatusPill, When } from "@/components/banker/ui";
 import {
   AMOUNT_LIMIT,
@@ -332,22 +332,23 @@ function Quick({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      aria-pressed={active}
-      className={`shrink-0 rounded-control border px-2.5 py-1.5 font-mono text-xs tabular-nums transition-colors duration-120 ease-out ${
-        disabled
-          ? "cursor-not-allowed border-edge bg-tone-2 text-ink-muted/50"
-          : active
-            ? "cursor-pointer border-edge-strong bg-tone-3 text-ink"
-            : "cursor-pointer border-edge bg-tone-2 text-ink-soft hover:bg-raised-hover hover:text-ink"
-      }`}
-    >
-      {children}
-    </button>
+    <Tooltip label={title} className="shrink-0">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-pressed={active}
+        className={`rounded-control border px-2.5 py-1.5 font-mono text-xs tabular-nums transition-colors duration-120 ease-out ${
+          disabled
+            ? "cursor-not-allowed border-edge bg-tone-2 text-ink-muted/50"
+            : active
+              ? "cursor-pointer border-edge-strong bg-tone-3 text-ink"
+              : "cursor-pointer border-edge bg-tone-2 text-ink-soft hover:bg-raised-hover hover:text-ink"
+        }`}
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 

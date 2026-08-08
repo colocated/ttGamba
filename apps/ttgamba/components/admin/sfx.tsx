@@ -134,7 +134,6 @@ function Key({
     <button
       type="button"
       onClick={onPlay}
-      title={`Play ${name} (${index})`}
       className={`flex w-full cursor-pointer items-center gap-3 rounded-control border px-3 py-2 text-left transition-colors duration-120 ease-out ${
         lit
           ? "border-felt bg-felt/15 text-felt-hi"

@@ -12,6 +12,7 @@
 import { PokerChipIcon } from "@phosphor-icons/react/dist/csr/PokerChip";
 import { WarningIcon } from "@phosphor-icons/react/dist/csr/Warning";
 
+import { Tooltip } from "@tt/window";
 import { TONES } from "@/components/stage";
 import type { Failure, RequestKind, RequestStatus } from "@/lib/desk";
 import { KINDS, STATUSES } from "@/lib/desk";
@@ -77,31 +78,33 @@ export function ChipFigure({ amount, className = "" }: { amount: number; classNa
 
 /**
  * When something happened, in both readings. The relative one is what a queue
- * is scanned by; the absolute one is on the `title` because "3d ago" is no use
- * in a dispute.
+ * is scanned by; the absolute one is a `Tooltip` away because "3d ago" is no
+ * use in a dispute.
  */
 export function When({ at, className = "" }: { at: number; className?: string }) {
   return (
-    <time
-      dateTime={new Date(at).toISOString()}
-      title={formatExactly(at)}
-      className={`text-xs text-ink-muted ${className}`}
-    >
-      {formatAgo(at)}
-    </time>
+    <Tooltip label={formatExactly(at)}>
+      <time
+        dateTime={new Date(at).toISOString()}
+        className={`text-xs text-ink-muted ${className}`}
+      >
+        {formatAgo(at)}
+      </time>
+    </Tooltip>
   );
 }
 
 /** The absolute reading, for the log, where rows are read rather than scanned. */
 export function Stamp({ at }: { at: number }) {
   return (
-    <time
-      dateTime={new Date(at).toISOString()}
-      title={formatExactly(at)}
-      className="shrink-0 font-mono text-xs tabular-nums text-ink-muted"
-    >
-      {formatWhen(at)}
-    </time>
+    <Tooltip label={formatExactly(at)}>
+      <time
+        dateTime={new Date(at).toISOString()}
+        className="shrink-0 font-mono text-xs tabular-nums text-ink-muted"
+      >
+        {formatWhen(at)}
+      </time>
+    </Tooltip>
   );
 }
 
@@ -190,12 +193,27 @@ export function Button({
   onClick,
   tone = "quiet",
   disabled,
+  title,
   children,
   type = "button",
 }: {
-  onClick?: () => void;
+  /**
+   * The event is passed on so a caller can read a modifier off it — the
+   * table's "stand up", where shift means leave the room rather than the
+   * chair. Ignored by almost every caller, which is why it stays optional
+   * rather than becoming the reason every handler grows a parameter.
+   */
+  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   tone?: "quiet" | "go" | "stop";
   disabled?: boolean;
+  /**
+   * A hover label, for a button whose visible text cannot say everything — a
+   * modifier it also answers to, or why it is disabled right now. Rendered as
+   * a `Tooltip`, not the native `title` attribute — see that component for
+   * why, and keep this to a phrase, never something the player has to know
+   * to use the button at all.
+   */
+  title?: string;
   children: React.ReactNode;
   type?: "button" | "submit";
 }) {
@@ -206,16 +224,18 @@ export function Button({
   } as const;
 
   return (
-    <button
-      type={type}
-      onClick={onClick}
-      disabled={disabled}
-      className={`rounded-control border px-3 py-2 text-sm font-medium transition-colors duration-120 ease-out ${
-        disabled ? "cursor-not-allowed border-edge bg-tone-2 text-ink-muted/60" : `cursor-pointer ${tones[tone]}`
-      }`}
-    >
-      {children}
-    </button>
+    <Tooltip label={title}>
+      <button
+        type={type}
+        onClick={onClick}
+        disabled={disabled}
+        className={`rounded-control border px-3 py-2 text-sm font-medium transition-colors duration-120 ease-out ${
+          disabled ? "cursor-not-allowed border-edge bg-tone-2 text-ink-muted/60" : `cursor-pointer ${tones[tone]}`
+        }`}
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 

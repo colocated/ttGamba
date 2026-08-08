@@ -32,6 +32,7 @@ export { Overlay, OverlayHost, CloseButton, useClose } from "./overlay";
 
 // Page furniture.
 export { Stage, Panel, Count } from "./layout";
+export { Tooltip } from "./tooltip";
 export { Odometer } from "./odometer";
 export { NamedIcon, useIcon, iconName } from "./icon";
 export { InstallGuide } from "./install-guide";

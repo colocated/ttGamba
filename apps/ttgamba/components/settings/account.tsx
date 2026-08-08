@@ -40,7 +40,7 @@ import { formatChips, formatMoney } from "@/lib/format";
 import { usePlayer } from "@tt/userapp/gamedata";
 import { getMyRequests } from "@/lib/requests";
 import { usePlayerCall } from "@/lib/staff";
-import { Odometer } from "@tt/window";
+import { Odometer, Tooltip } from "@tt/window";
 import { Drawer, Field, Fields, Pending, Section } from "./fields";
 import { RequestForm, RequestList } from "./requests";
 
@@ -203,19 +203,21 @@ function Chips({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onAsk("withdrawal")}
-          disabled={!canWithdraw}
-          title={canWithdraw ? undefined : why}
-          className={`rounded-control border px-3 py-2 text-sm font-medium transition-colors duration-120 ease-out ${
-            canWithdraw
-              ? "cursor-pointer border-edge bg-tone-3 text-ink-soft hover:bg-raised-hover hover:text-ink"
-              : "cursor-not-allowed border-edge bg-tone-2 text-ink-muted/60"
-          }`}
-        >
-          Withdraw
-        </button>
+        {/* `why` explains a disabled Withdraw — the only place that reason lives. */}
+        <Tooltip label={canWithdraw ? null : why}>
+          <button
+            type="button"
+            onClick={() => onAsk("withdrawal")}
+            disabled={!canWithdraw}
+            className={`rounded-control border px-3 py-2 text-sm font-medium transition-colors duration-120 ease-out ${
+              canWithdraw
+                ? "cursor-pointer border-edge bg-tone-3 text-ink-soft hover:bg-raised-hover hover:text-ink"
+                : "cursor-not-allowed border-edge bg-tone-2 text-ink-muted/60"
+            }`}
+          >
+            Withdraw
+          </button>
+        </Tooltip>
 
         <button
           type="button"

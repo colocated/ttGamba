@@ -15,6 +15,7 @@ import { usePlayer } from "@tt/userapp/gamedata";
 
 import { InstallGuide } from "./install-guide";
 import { OverlayHost } from "./overlay";
+import { Tooltip } from "./tooltip";
 import { UpdateBanner } from "./update-banner";
 import { useWindowFrame, type WindowCorner, type WindowFrameOptions } from "./use-window-frame";
 
@@ -345,17 +346,18 @@ function MinimisedTab({
             {/*
               A keycap rather than the word. The bind is named Triangle after
               the shape, and the shape is what a player sees in the keybinds
-              menu — but only after they have set it, which is why the title says
-              where. It may well be unbound, and then this is the half of the
-              hint that does nothing.
+              menu. It may well be unbound, and this reads the same either way.
 
               Only the default bind has a glyph. Anything else an app registers
               is named rather than drawn, because there is no shape to draw.
+
+              No `Tooltip` — this sits inside the tab's own button (`onOpen`
+              above), and a second focusable, hoverable thing nested inside
+              one interactive control is a worse trade than naming exactly
+              where to change the bind. "Click or press" beside it already
+              says what the glyph is for.
             */}
-            <span
-              title={`${capitalise(trigger ?? "triangle")} — set the bind under Settings › Keybinds › FiveM`}
-              className="inline-flex h-4 shrink-0 items-center justify-center rounded-chip border border-edge-strong bg-tone-3 px-1 text-[10px] text-ink"
-            >
+            <span className="inline-flex h-4 shrink-0 items-center justify-center rounded-chip border border-edge-strong bg-tone-3 px-1 text-[10px] text-ink">
               {(trigger ?? "triangle") === "triangle" ? (
                 <TriangleIcon size={9} weight="fill" aria-hidden />
               ) : (
@@ -426,29 +428,42 @@ export function ChromeButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={onClick}
-      aria-pressed={pressed}
-      disabled={disabled}
-      /*
-        `disabled` is `!ready`, and this is the element React actually names when
-        the frame re-hydrates. The flag does not cascade from the frame — it
-        covers one element's own attributes and nothing below it — so it has to
-        be repeated here. Reasoning in full on the frame in `Tablet`.
-      */
-      suppressHydrationWarning
-      title={label}
-      className={`rounded-control p-1 transition-colors duration-120 ease-out ${
-        disabled
-          ? "cursor-default text-ink-muted/40"
-          : `cursor-pointer hover:bg-tone-2 hover:text-ink ${className ?? ""}`
-      }`}
-    >
-      {children}
-      <span className="sr-only">{label}</span>
-    </button>
+    /*
+      Every one of these is an icon and nothing else — `children` is an SVG,
+      and `label` only exists on screen as the `sr-only` span below. Before
+      `Tooltip`, that made `title` load-bearing rather than a courtesy: it was
+      the *only* way a sighted, mouse-using player could learn what an icon
+      button does without pressing it.
+    */
+    /*
+      `side="bottom"` — every one of these lives in the titlebar, the very top
+      of the window, and the default `top` placement would try to open into
+      space that is not there.
+    */
+    <Tooltip label={label} side="bottom">
+      <button
+        type="button"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={onClick}
+        aria-pressed={pressed}
+        disabled={disabled}
+        /*
+          `disabled` is `!ready`, and this is the element React actually names when
+          the frame re-hydrates. The flag does not cascade from the frame — it
+          covers one element's own attributes and nothing below it — so it has to
+          be repeated here. Reasoning in full on the frame in `Tablet`.
+        */
+        suppressHydrationWarning
+        className={`rounded-control p-1 transition-colors duration-120 ease-out ${
+          disabled
+            ? "cursor-default text-ink-muted/40"
+            : `cursor-pointer hover:bg-tone-2 hover:text-ink ${className ?? ""}`
+        }`}
+      >
+        {children}
+        <span className="sr-only">{label}</span>
+      </button>
+    </Tooltip>
   );
 }
 
@@ -469,13 +484,15 @@ export function TitlebarLink({
   children: React.ReactNode;
 }) {
   return (
-    <Link
-      href={href}
-      onPointerDown={(event) => event.stopPropagation()}
-      title={title}
-      className={`flex items-center gap-1.5 rounded-chip border border-edge bg-tone-2 px-2 py-1 font-mono text-xs tabular-nums transition-colors duration-120 ease-out hover:bg-tone-3 ${className}`.trim()}
-    >
-      {children}
-    </Link>
+    // Titlebar again — opens downward for the same reason `ChromeButton` does.
+    <Tooltip label={title} side="bottom">
+      <Link
+        href={href}
+        onPointerDown={(event) => event.stopPropagation()}
+        className={`flex items-center gap-1.5 rounded-chip border border-edge bg-tone-2 px-2 py-1 font-mono text-xs tabular-nums transition-colors duration-120 ease-out hover:bg-tone-3 ${className}`.trim()}
+      >
+        {children}
+      </Link>
+    </Tooltip>
   );
 }

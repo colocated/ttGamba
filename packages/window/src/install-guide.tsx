@@ -132,7 +132,6 @@ function Address({ value }: { value: string }) {
         // Left to its own content, the button would rename itself to "Copied"
         // and read as a different control every time it was pressed.
         aria-label={`Copy address ${value}`}
-        title="Copy address"
         // `mt-2` rather than a gap on the parent: the step's content is normal
         // flow so that its text reads as a sentence, and this is the one child
         // that wants to be a block under it.

@@ -279,7 +279,6 @@ function RoleControl({
         disabled={busy}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title="Change this player's role"
         className={`-my-0.5 flex items-center gap-1 rounded-chip border px-1.5 py-0.5 transition-colors duration-120 ease-out ${
           busy
             ? "cursor-default border-edge text-ink-muted/60"
@@ -383,7 +382,6 @@ function ActivityRow({ event, subjectVrpId }: { event: AuditRow; subjectVrpId: n
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title="See what was recorded"
         className="flex w-full cursor-pointer items-center gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors duration-120 ease-out hover:bg-tone-2"
       >
         <Glyph size={15} weight="fill" className={`shrink-0 ${SHAPE_TEXT[shape]}`} aria-hidden />
@@ -395,13 +393,15 @@ function ActivityRow({ event, subjectVrpId }: { event: AuditRow; subjectVrpId: n
           ) : null}
         </span>
 
-        {/* Administrator actions reached past the desk, so they are marked
-            rather than left looking like the ordinary business around them. */}
+        {/*
+          Administrator actions reached past the desk, so they are marked
+          rather than left looking like the ordinary business around them.
+          No `Tooltip` on top of the visible "Admin" text — it would only
+          repeat the badge, and it would nest a second focusable thing inside
+          this row's own button besides.
+        */}
         {admin ? (
-          <span
-            title="An administrator action"
-            className="flex shrink-0 items-center gap-1 rounded-chip border border-loss/50 bg-loss/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-loss"
-          >
+          <span className="flex shrink-0 items-center gap-1 rounded-chip border border-loss/50 bg-loss/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-loss">
             <ShieldStarIcon size={9} weight="fill" aria-hidden />
             Admin
           </span>

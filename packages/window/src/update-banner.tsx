@@ -4,6 +4,7 @@ import { useState } from "react";
 import { InfoIcon } from "@phosphor-icons/react/dist/csr/Info";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 
+import { Tooltip } from "./tooltip";
 import { useUpdateAvailable } from "./version";
 
 /**
@@ -50,15 +51,17 @@ export function UpdateBanner() {
         className="min-w-0 flex-1 rounded-chip bg-tone-1 px-2 py-1 font-mono text-xs text-ink"
       />
 
-      <button
-        type="button"
-        onClick={() => setDismissed(true)}
-        title="Dismiss"
-        className="shrink-0 cursor-pointer rounded-control p-1 text-ink-muted transition-colors duration-120 ease-out hover:bg-tone-2 hover:text-ink"
-      >
-        <XIcon size={14} aria-hidden />
-        <span className="sr-only">Dismiss</span>
-      </button>
+      {/* This banner sits just under the titlebar — `side="bottom"` keeps clear of it. */}
+      <Tooltip label="Dismiss" side="bottom">
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          className="shrink-0 cursor-pointer rounded-control p-1 text-ink-muted transition-colors duration-120 ease-out hover:bg-tone-2 hover:text-ink"
+        >
+          <XIcon size={14} aria-hidden />
+          <span className="sr-only">Dismiss</span>
+        </button>
+      </Tooltip>
     </div>
   );
 }

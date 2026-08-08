@@ -34,7 +34,7 @@
 import { useEffect, useState } from "react";
 import { BroomIcon } from "@phosphor-icons/react/dist/csr/Broom";
 import { LockKeyIcon } from "@phosphor-icons/react/dist/csr/LockKey";
-import { Tabs, type Tab } from "@tt/window";
+import { Tabs, Tooltip, type Tab } from "@tt/window";
 
 import { Panel, Stage, Tag } from "@/components/stage";
 import { flushQueryCache } from "@/lib/catalogue";
@@ -136,20 +136,21 @@ function FlushCache() {
           {cleared === 0 ? "Nothing cached" : `Cleared ${cleared}`}
         </span>
       ) : null}
-      <button
-        type="button"
-        onClick={flush}
-        disabled={busy}
-        title="Throw away every cached row. Safe at any time — the database is the source."
-        className={`flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-xs transition-colors duration-120 ease-out ${
-          busy
-            ? "cursor-default border-edge text-ink-muted/60"
-            : "cursor-pointer border-edge bg-tone-2 text-ink-soft hover:border-edge-strong hover:bg-raised-hover hover:text-ink"
-        }`}
-      >
-        <BroomIcon size={13} className={busy ? "animate-refresh" : undefined} aria-hidden />
-        Clear cache
-      </button>
+      <Tooltip label="Throw away every cached row. Safe at any time — the database is the source.">
+        <button
+          type="button"
+          onClick={flush}
+          disabled={busy}
+          className={`flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-xs transition-colors duration-120 ease-out ${
+            busy
+              ? "cursor-default border-edge text-ink-muted/60"
+              : "cursor-pointer border-edge bg-tone-2 text-ink-soft hover:border-edge-strong hover:bg-raised-hover hover:text-ink"
+          }`}
+        >
+          <BroomIcon size={13} className={busy ? "animate-refresh" : undefined} aria-hidden />
+          Clear cache
+        </button>
+      </Tooltip>
     </div>
   );
 }

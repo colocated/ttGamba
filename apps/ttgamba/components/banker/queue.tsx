@@ -78,7 +78,6 @@ export function Queue({ kind }: { kind: RequestKind }) {
         <button
           type="button"
           onClick={refresh}
-          title="Check for new requests"
           className="flex cursor-pointer items-center gap-1.5 rounded-control border border-edge bg-tone-2 px-2.5 py-1.5 text-xs text-ink-soft transition-colors duration-120 ease-out hover:bg-raised-hover hover:text-ink"
         >
           <ArrowClockwiseIcon size={14} className={loading ? "animate-refresh" : undefined} aria-hidden />
@@ -156,11 +155,8 @@ function Row({ row, onOpen }: { row: RequestRow; onOpen: () => void }) {
 
         <div className="flex min-w-0 items-center gap-3 font-mono text-xs text-ink-muted">
           <span className="shrink-0">vRP {row.vrpId}</span>
-          {row.discordId ? (
-            <span className="truncate" title={`Discord ${row.discordId}`}>
-              Discord {row.discordId}
-            </span>
-          ) : null}
+          {/* No `Tooltip` for the truncated id — see `Row`'s own doc comment: this is already inside the row's button. */}
+          {row.discordId ? <span className="truncate">Discord {row.discordId}</span> : null}
           <When at={row.createdAt} className="shrink-0" />
         </div>
       </div>

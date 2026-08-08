@@ -33,6 +33,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, us
 import { createPortal } from "react-dom";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 
+import { Tooltip } from "./tooltip";
+
 const OVERLAY_ID = "tt-overlay";
 
 /**
@@ -201,15 +203,18 @@ export function CloseButton() {
   const close = useClose();
 
   return (
-    <button
-      type="button"
-      onClick={close}
-      title="Close"
-      className="shrink-0 cursor-pointer rounded-control p-1 text-ink-muted transition-colors duration-120 ease-out hover:bg-tone-2 hover:text-ink"
-    >
-      <XIcon size={16} aria-hidden />
-      <span className="sr-only">Close</span>
-    </button>
+    // `side="bottom"` — this sits in a modal's own header, its top-right corner,
+    // where opening upward would push the tooltip past the modal's own edge.
+    <Tooltip label="Close" side="bottom">
+      <button
+        type="button"
+        onClick={close}
+        className="shrink-0 cursor-pointer rounded-control p-1 text-ink-muted transition-colors duration-120 ease-out hover:bg-tone-2 hover:text-ink"
+      >
+        <XIcon size={16} aria-hidden />
+        <span className="sr-only">Close</span>
+      </button>
+    </Tooltip>
   );
 }
 

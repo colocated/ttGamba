@@ -9,6 +9,8 @@
  * not.
  */
 
+import { Tooltip } from "./tooltip";
+
 /**
  * Shared chrome for anything rendered in the window's right-hand pane, so every
  * page gets the same header rhythm.
@@ -64,11 +66,10 @@ export function Panel({
  */
 export function Count({ value, title }: { value: number; title?: string }) {
   return (
-    <span
-      title={title}
-      className="rounded-chip border border-chip/50 bg-chip/10 px-1.5 py-0.5 font-mono text-[11px] tabular-nums leading-none text-chip"
-    >
-      {value}
-    </span>
+    <Tooltip label={title}>
+      <span className="rounded-chip border border-chip/50 bg-chip/10 px-1.5 py-0.5 font-mono text-[11px] tabular-nums leading-none text-chip">
+        {value}
+      </span>
+    </Tooltip>
   );
 }
